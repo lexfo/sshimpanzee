@@ -1,0 +1,10 @@
+openssh-portable/*
+keys/
+*~
+sshd
+src/__pycache__
+tuns/__pycache__
+tuns/libtun.a
+*.o
+utils/client/bin/dns2tcpd
+build/*

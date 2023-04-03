@@ -1,0 +1,25 @@
+#!/bin/sh
+
+
+script_path="$(realpath -s "$0")"
+sshim_dir=$(realpath $(dirname $script_path)/../)/
+
+n=0
+for i in $(ls $sshim_dir/socks);
+do
+    if [[ $1 = "n" ]];
+    then 
+	ssh -S $sshim_dir/socks/$i -O check _ 2>/dev/null && (echo $n $i;) ||  rm $sshim_dir/socks/$i
+    fi
+    
+    if [[ -z $1 ]];
+    then
+       ssh -S $sshim_dir/socks/$i -O check _ 2>/dev/null && (echo $i;) ||  rm $sshim_dir/socks/$i    
+    fi;
+
+    if [[ $1 = "g" && $2 = $n ]];
+    then
+	ssh -S $sshim_dir/socks/$i -O check _ 2>/dev/null && (echo $i;) ||  rm $sshim_dir/socks/$i    
+    fi;
+    n={{$n+1}}
+done;

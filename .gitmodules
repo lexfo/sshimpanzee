@@ -1,0 +1,15 @@
+[submodule "musl"]
+	path = musl
+	url = git://git.musl-libc.org/musl
+[submodule "openssh-portable"]
+	path = openssh-portable
+	url = https://github.com/openssh/openssh-portable.git
+[submodule "tuns/dns2tcp"]
+	path = tuns/dns2tcp
+	url = https://github.com/alex-sector/dns2tcp.git
+[submodule "tuns/proxysocket"]
+	path = tuns/proxysocket
+	url = https://github.com/brechtsanders/proxysocket
+[submodule "tuns/icmptunnel"]
+	path = tuns/icmptunnel
+	url = https://github.com/DhavalKapil/icmptunnel.git

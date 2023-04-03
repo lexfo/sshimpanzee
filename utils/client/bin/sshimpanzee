@@ -1,0 +1,176 @@
+#!/bin/sh
+
+script_path="$(realpath -s "$0")"
+sshim_dir=$(realpath $(dirname $script_path)/../)/
+
+sshim_key=$sshim_dir/keys/CLIENT
+sshim_socks="$sshim_dir"/socks
+sshim_conf="$sshim_dir"/config/ssh_config
+
+cmd_sock_name='echo "$(whoami)@$(hostname)"'
+
+if [[ "--list" = $1 ]];
+then
+    $sshim_dir/bin/active_chan n
+    exit
+fi
+
+if [[ "--new" = $1 ]];
+then
+    if [[ -z $2 ]];
+    then
+	port=8080;
+    else
+	port=$2;
+    fi
+    
+    echo Waiting for connect back direct TCP on port $port;
+    ssh -f  -S $sshim_socks/t -i $sshim_key -F $sshim_conf -o"ProxyCommand=nc -lp $port"  test -N;
+    sockname=$(ssh -S $sshim_socks/t -F $sshim_conf test $cmd_sock_name)
+    mv $sshim_socks/t $sshim_socks/$sockname
+    echo "Session $sockname has been created"
+    exit
+fi
+
+if [[ "--new-dns" = $1 ]];
+then
+    if [[ ! -f $sshim_dir/bin/dns2tcpd ]];
+    then
+	echo "Missing dns2tcpd binary in bin/"
+	echo "copy the build dns2tcpd in tuns/dns2tcp/server/ to utils/client/bin/"
+        exit
+    fi
+    echo Waiting for connect back DNS...;
+    if ! pgrep dns2tcpd >/dev/null;
+    then
+	sudo $sshim_dir/bin/dns2tcpd -f $sshim_dir/config/dnsconf.txt
+    fi;
+    ssh -f  -S $sshim_socks/t  -i $sshim_key -F $sshim_conf  -o"ProxyCommand=nc -lp 8080 -s 127.0.0.1" test -N  
+    sockname=$(ssh -S $sshim_socks/t -F $sshim_conf test $cmd_sock_name)
+    mv $sshim_socks/t $sshim_socks/$sockname
+    echo "Session $sockname has been created"
+    exit
+fi
+
+if [[ "--new-icmp" = $1 ]];
+then
+    if [[ ! -f $sshim_dir/bin/icmptunnel ]];
+    then
+	echo "Missing icmptunnel binary in bin/"
+	echo "copy the built icmptunnel in tuns/icmptunnel/ to utils/client/bin/"
+	echo "give it cap_net_raw cap to avoir run it as root:"
+	echo "sudo setcap cap_net_raw=eip ./icmptunnel"
+        exit
+    fi
+    echo Waiting for connect back through ICMP...;
+    ssh -f  -S $sshim_socks/t -F $sshim_conf  -i $sshim_key  -o"ProxyCommand=$sshim_dir/bin/icmptunnel" root@test -N  
+    sockname=$(ssh  -S $sshim_socks/t -F $sshim_conf test $cmd_sock_name)
+    mv $sshim_socks/t $sshim_socks/$sockname
+    echo "Session $sockname has been created"
+    exit
+fi
+
+if [[ "--new-http" = $1 ]];
+then
+    if [[ -z $2 ]];
+    then
+	echo "Please provide the proxy url..."
+	exit
+    fi
+    if [[ -z $3 ]];
+    then
+	echo "Please provide the key argument..."
+	exit
+    fi
+    echo Initiating connexion to proxy at $2 using encryption key $3...;
+    ssh -f  -S $sshim_socks/t -F $sshim_conf  -i $sshim_key -o"ProxyCommand=python $sshim_dir/bin/proxy_cli.py $2 $3" test -N  
+    sockname=$(ssh  -S $sshim_socks/t -F $sshim_conf test $cmd_sock_name)
+    mv $sshim_socks/t $sshim_socks/$sockname
+    echo "Session $sockname has been created"
+    exit
+fi
+
+
+if [[ "--get-name" = $1 ]];
+then
+    if [[ -z $2 || ! -S $sshim_socks/$2 ]];
+    then
+	echo "Please provide a valid session name..."
+	exit
+    fi
+    echo Session $2 :
+    ssh -S $sshim_socks/$2 _ ${@:3}
+    exit
+fi
+
+if [[ "--get" = $1 ]];
+then
+    if [[ -z $2 ]];
+    then
+	echo "Please provide a valid session id..."
+	exit
+    fi
+    res=$($sshim_dir/bin/active_chan g $2)
+    if [[ -z $res ]];
+    then
+	echo "Invalid Id"
+	exit
+    fi
+    
+    echo Session $res :
+    ssh -S $sshim_socks/$res _ ${@:3}
+    exit
+fi
+
+
+
+
+
+
+if [[ "--kill" = $1 ]]
+then
+    if [[ ! -z $2 && -S $sshim_socks/$2 ]];
+    then
+	ssh -F $sshim_conf -S $sshim_socks/$2 -O exit _
+	exit
+    fi
+
+    res=$($sshim_dir/bin/active_chan g $2)
+    if [[ ! -z $res ]];
+    then
+	ssh -F $sshim_conf -S $sshim_socks/$res -O exit _
+    fi
+    exit
+fi
+
+if [[ "--rename" = $1 ]]
+then
+    if [[ ! -z $2 && -S $sshim_socks/$2 ]];
+    then
+	echo "Print enter new name for $2"
+	read name
+	mv $sshim_socks/$2 $sshim_socks/$name
+	exit
+    fi
+
+    res=$($sshim_dir/bin/active_chan g $2)
+    if [[ ! -z $res ]];
+    then
+	echo "Print enter new name for $res"
+	read name
+	mv $sshim_socks/$res $sshim_socks/$name    
+    fi
+    exit
+fi
+
+
+res=$($sshim_dir/bin/active_chan | fzf)
+if [[ ! -S $sshim_socks/$res ]];
+then
+    exit
+fi
+
+
+ssh -F $sshim_conf -S $sshim_socks/$res $res ${@:3}
+
+
