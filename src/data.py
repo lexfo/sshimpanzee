@@ -16,7 +16,7 @@ sshd_header = """
 #define SSHD_CONF_H
 
 
-#define EXTRACONFIG "AuthorizedKeysFile	/<KEYFILE>\\nSubsystem sftp internal-sftp\\nLogLevel QUIET\\npasswordauthentication no\\nkbdinteractiveauthentication no\\nClientAliveInterval 60\\nPrintLastLog no\\nPermitUserRC no\\nPermitUserEnvironment no\\nChrootDirectory /\\n"
+#define EXTRACONFIG "AuthorizedKeysFile	/<KEYFILE>\\nSubsystem sftp internal-sftp\\nLogLevel QUIET\\npasswordauthentication no\\nkbdinteractiveauthentication no\\nClientAliveInterval 60\\nPermitUserRC no\\nPermitUserEnvironment no\\n"
 
 #define LISTENADDRESS "<REMOTE>" 
 #define PORT <PORT>
