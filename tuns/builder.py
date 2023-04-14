@@ -66,10 +66,10 @@ def dns(opt):
     run_cmd(cmd)
     
     cmd = f"cd tuns/dns2tcp; make clean; gcc common/debug.c -c -o client/debug.o; cd client; make;"
+    run_cmd(cmd)
     print("[+] Client lib and server built") 
 
     cmd = "cd tuns/dns2tcp/client; ar rcs ../../../build/libtun.a *.o"
-        
     if run_cmd(cmd) or not os.path.exists("build/libtun.a"):
         print("[-] Failed building dns2tcp lib.")
         sys.exit(-1)
