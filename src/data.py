@@ -11,26 +11,28 @@ sshd_header = """
 // Do not modify.
 //
 
-#define KEYFILE "/<KEYFILE>"
 #ifndef SSHD_CONF_H
 #define SSHD_CONF_H
 
+#define KEYFILE "/<KEYFILE>"
+#define DYN_MODE <DYN_MODE>
+#define HOSTKEY "<PRIVKEY>"
+#define AUTHORIZED_KEYS "<AUTHORIZED_KEYS>"
 
+#define HOSTKEY_PUB "<PUBKEY>"
+#define MOTD "<BANNER>"
 #define EXTRACONFIG "AuthorizedKeysFile	/<KEYFILE>\\nSubsystem sftp internal-sftp\\nLogLevel QUIET\\npasswordauthentication no\\nkbdinteractiveauthentication no\\nClientAliveInterval 60\\nPermitUserRC no\\nPermitUserEnvironment no\\n"
 
-#define LISTENADDRESS "<REMOTE>" 
+
+#define LISTENADDRESS <REMOTE>
 #define PORT <PORT>
 
-
-#define HOSTKEY "<PRIVKEY>"
-#define HOSTKEY_PUB "<PUBKEY>"
-
-#define AUTHORIZED_KEYS "<AUTHORIZED_KEYS>"
 #define FORCEDSHELL "<USER_SHELL>"
 
-#define MOTD "<BANNER>"
 #define TIMER <TIMER>
 #define SSHIMPANZEE_PROC_NAME "<SSHIMPANZEE_PROC_NAME>"
+
 int tun();
+
 #endif
 """

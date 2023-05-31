@@ -28,6 +28,9 @@ parser.add_argument('--no-banner', dest='no_banner', action='store_const',
 parser.add_argument('--tunnel', dest='tun', nargs='?', type=str,
                     help=' Tunnelling using various method, try --tun help to get the complete list of tunnels and their related options')
 
+parser.add_argument('--dynamic-mode', '-D', dest='dyn_mode', action='store_const', const=True, default=False,
+                    help='Configure remote address with environment variables (r and p)')
+
 
 parser.add_argument('--verbose', '-v', dest='verbose', action='count',
                     default=0,
@@ -51,6 +54,7 @@ parser.add_argument('--timer', '-t',  dest='timer', nargs='?', type=str,
 parser.add_argument('--force-clean-build', dest='force_clean_build', action='store_const', default=False, const=True, help='clean and rebuild dependancies (musl and openssh)')
 
 parser.add_argument('--proc-name', '-P', dest='process_name', action='store', default='sshimpanzee', help='Process name on victim machine')
+
 
 
 args = parser.parse_args()

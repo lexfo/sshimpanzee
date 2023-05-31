@@ -1,5 +1,5 @@
 listen = 0.0.0.0
 port = 53
 key = sshimpanzee
-domain = dns.lexfo.fr
+domain = [YOUR.DNS.SERVER]
 resources = sshimpanzee:127.0.0.1:8080

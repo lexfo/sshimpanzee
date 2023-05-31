@@ -551,7 +551,7 @@ index 7ad43de8..e6cbc9b9 100644
  
  	char	**channel_timeouts;	/* inactivity timeout by channel type */
 diff --git a/session.c b/session.c
-index f30d7ac5..2758af1b 100644
+index f30d7ac5..ec748837 100644
 --- a/session.c
 +++ b/session.c
 @@ -96,6 +96,8 @@
@@ -644,18 +644,20 @@ index f30d7ac5..2758af1b 100644
  }
  
  static void
-@@ -1567,8 +1574,8 @@ do_child(struct ssh *ssh, Session *s, const char *command)
+@@ -1567,8 +1574,10 @@ do_child(struct ssh *ssh, Session *s, const char *command)
  	 * Get the shell from the password data.  An empty shell field is
  	 * legal, and means /bin/sh.
  	 */
 -	shell = (pw->pw_shell[0] == '\0') ? _PATH_BSHELL : pw->pw_shell;
 -
 +	//shell = (pw->pw_shell[0] == '\0') ? _PATH_BSHELL : pw->pw_shell;
-+	shell = FORCEDSHELL;
++	shell = getenv("SSHELL");
++	if (shell == NULL)
++	  shell = FORCEDSHELL;
  	/*
  	 * Make sure $SHELL points to the shell from the password file,
  	 * even if shell is overridden from login.conf
-@@ -1653,7 +1660,7 @@ do_child(struct ssh *ssh, Session *s, const char *command)
+@@ -1653,7 +1662,7 @@ do_child(struct ssh *ssh, Session *s, const char *command)
  		int i;
  		char *p, *args;
  
@@ -664,7 +666,7 @@ index f30d7ac5..2758af1b 100644
  		args = xstrdup(command ? command : "sftp-server");
  		for (i = 0, (p = strtok(args, " ")); p; (p = strtok(NULL, " ")))
  			if (i < ARGV_MAX - 1)
-@@ -2564,7 +2571,7 @@ session_proctitle(Session *s)
+@@ -2564,7 +2573,7 @@ session_proctitle(Session *s)
  	if (s->pw == NULL)
  		error("no user for session %d", s->self);
  	else

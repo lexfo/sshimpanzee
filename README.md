@@ -46,6 +46,16 @@ Alternatively use -d option if you want debug information. Note that, in debug m
 
 6) 192.168.0.2 should have received the connection.
 
+### Dynamic mode
+
+It is possible to provide remote address and port at runtime through environment variables.
+To do so, build sshimpanzee with `-D` option. 
+Then at runtime, run sshd by setting remote address and port with `r` and `p` environment variables:
+
+```
+
+```
+
 
 ## Tunnels 
 
@@ -226,6 +236,10 @@ Examples:
   - Userland TCP/IP Stack with raw sock ?
   - ICMP : Xor/Encrypt string to avoid detection in case of network analysis 
   - Dynamic mode, packaging every tunnel and reconfigurable
+  - Subsystem for post exploitation: 
+	- Procdump
+	- inject 
+	- memfd exec
   
 
 ## Bugs

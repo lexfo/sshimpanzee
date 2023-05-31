@@ -187,7 +187,7 @@ index 0000000..03bd499
 +
 +
 diff --git a/icmp.c b/icmp.c
-index 0cd1aa7..0c1339b 100644
+index 0cd1aa7..571e72c 100644
 --- a/icmp.c
 +++ b/icmp.c
 @@ -1,5 +1,5 @@
@@ -201,7 +201,7 @@ index 0cd1aa7..0c1339b 100644
  #include <stdio.h>
  #include <stdlib.h>
  
-+int lastid = -1;
++int lastid = 0x4141;
 +int i;
  /**
   * Function to calculate checksum
@@ -324,18 +324,12 @@ index 0cd1aa7..0c1339b 100644
    // Filling up packet_details
    inet_ntop(AF_INET, &(ip->saddr), packet_details->src_addr, INET_ADDRSTRLEN);
    inet_ntop(AF_INET, &(ip->daddr), packet_details->dest_addr, INET_ADDRSTRLEN);
-@@ -183,10 +220,64 @@ void receive_icmp_packet(int sock_fd, struct icmp_packet *packet_details)
+@@ -183,10 +220,51 @@ void receive_icmp_packet(int sock_fd, struct icmp_packet *packet_details)
      close_icmp_socket(sock_fd);
      exit(-1);
    }
-+    if (packet_details->type==ICMP_ECHO
-+      && (
-+	  (icmp_payload[0]=='S' && icmp_payload[1]=='S' && icmp_payload[2]=='H')
-+	  || (icmp_payload[0]=='A' && icmp_payload[1]=='C'&& icmp_payload[2]=='K')
-+	  || lastid == -1 )
-+      )
-+    lastid = icmp->un.echo.id;
- 
+-
++  lastid = icmp->un.echo.id;
    memcpy(packet_details->payload, icmp_payload, packet_details->payload_size);
  
    free(packet);
@@ -371,15 +365,9 @@ index 0cd1aa7..0c1339b 100644
 +    close_icmp_socket(sock_fd);
 +    exit(-1);
 +  }
-+  memcpy(packet_details->payload, icmp_payload, packet_details->payload_size);
-+  if (packet_details->type==ICMP_ECHO 
-+      && (
-+	  (icmp_payload[0]=='S' && icmp_payload[1]=='S' && icmp_payload[2]=='H')
-+	  || (icmp_payload[0]=='A' && icmp_payload[1]=='C'&& icmp_payload[2]=='K')
-+	  || lastid == -1
-+	  )
-+      )
++  if (packet_details->type==ICMP_ECHO)
 +    lastid = icmp->un.echo.id;
++  memcpy(packet_details->payload, icmp_payload, packet_details->payload_size);
 +  //printf(">> %s\n", packet_details->payload);
 +  
 +  
@@ -389,7 +377,7 @@ index 0cd1aa7..0c1339b 100644
  }
  
  /**
-@@ -232,6 +323,7 @@ uint16_t in_cksum(uint16_t *addr, int len)
+@@ -232,6 +310,7 @@ uint16_t in_cksum(uint16_t *addr, int len)
   */
  void prepare_headers(struct iphdr *ip, struct icmphdr *icmp)
  {
@@ -397,7 +385,7 @@ index 0cd1aa7..0c1339b 100644
    ip->version = 4;
    ip->ihl = 5;
    ip->tos = 0;
-@@ -239,9 +331,11 @@ void prepare_headers(struct iphdr *ip, struct icmphdr *icmp)
+@@ -239,9 +318,11 @@ void prepare_headers(struct iphdr *ip, struct icmphdr *icmp)
    ip->frag_off = 0;
    ip->ttl = 255;
    ip->protocol = IPPROTO_ICMP;
@@ -455,7 +443,7 @@ index 526c044..fbb382e 100644
    return EXIT_SUCCESS;
  }
 diff --git a/tunnel.c b/tunnel.c
-index ba28e67..21b0fe5 100644
+index ba28e67..9e954ee 100644
 --- a/tunnel.c
 +++ b/tunnel.c
 @@ -24,45 +24,22 @@
@@ -518,13 +506,14 @@ index ba28e67..21b0fe5 100644
 -  printf("[DEBUG] Reading from tunnel\n");
 -  bytes_read = read(tun_fd, buffer, length);
 -
+-  if (bytes_read == -1) {
 +  //printf("[DEBUG] Reading from tunnel\n");
 +  buffer[0] = 'S';
 +  buffer[1] = 'S';
 +  buffer[2] = 'H';
 +  bytes_read = read(fd_in, buffer+3, length-3);
 +  
-   if (bytes_read == -1) {
++  if (bytes_read == -1 || bytes_read == 0) {
      perror("Unable to read from tunnel\n");
      exit(EXIT_FAILURE);
    }
@@ -556,7 +545,7 @@ index ba28e67..21b0fe5 100644
 -  int pid, status;
 -  char path[100];
 -  char *const args[] = {path, NULL};
- 
+-
 -  if (server) {
 -    if (sizeof(SERVER_SCRIPT) > sizeof(path)){
 -      perror("Server script path is too long\n");
@@ -573,7 +562,7 @@ index ba28e67..21b0fe5 100644
 -  }
 -
 -  pid = fork();
--
+ 
 -  if (pid == -1) {
 -    perror("Unable to fork\n");
 -    exit(EXIT_FAILURE);
@@ -598,7 +587,7 @@ index ba28e67..21b0fe5 100644
  }
  
  
-@@ -162,46 +101,101 @@ void run_tunnel(char *dest, int server)
+@@ -162,18 +101,29 @@ void run_tunnel(char *dest, int server)
  
    tun_fd = tun_alloc("tun0", IFF_TUN | IFF_NO_PI);
  
@@ -633,51 +622,9 @@ index ba28e67..21b0fe5 100644
      FD_ZERO(&fs);
      FD_SET(tun_fd, &fs);
      FD_SET(sock_fd, &fs);
- 
+@@ -181,13 +131,13 @@ void run_tunnel(char *dest, int server)
      select(tun_fd>sock_fd?tun_fd+1:sock_fd+1, &fs, NULL, NULL, NULL);
  
-+    if (FD_ISSET(sock_fd, &fs)) {
-+      //printf("[DEBUG] Received ICMP packet\n");
-+      // Reading data from remote socket and sending to tun device
-+
-+      // Getting ICMP packet
-+      memset(&packet, 0, sizeof(struct icmp_packet));
-+
-+      
-+      receive_icmp_packet(sock_fd, &packet);
-+	
-+      //printf("[DEBUG] Read ICMP packet with src: %s, dest: %s, payload_size: %d, payload: %s\n", packet.src_addr, packet.dest_addr, packet.payload_size, packet.payload);
-+      // Writing out to tun device
-+      //printf("<<%s\n", packet.payload);
-+
-+      
-+      if(packet.payload[0] == 'S' && packet.payload[1] == 'S' && packet.payload[2] == 'H')
-+      {
-+	packet.payload = packet.payload+3;
-+	if (packet.payload_size>3)
-+	  tun_write(tun_fd, packet.payload, packet.payload_size-3);
-+	//write(2, "<<", 3);
-+	//write(2, packet.payload, packet.payload_size-3);
-+	packet.payload = packet.payload-3;
-+#ifndef NO_ROOT
-+      strncpy(dest, packet.src_addr, strlen(packet.src_addr) + 1);
-+
-+#else
-+      free(packet.payload);
-+      //strncpy(packet.src_addr, DEFAULT_ROUTE, strlen(DEFAULT_ROUTE) + 1);
-+      strncpy(packet.dest_addr, dest, strlen(dest) + 1);
-+      set_echo_type(&packet);
-+      packet.payload = malloc(strlen(ACK)+1);
-+      strcpy(packet.payload, ACK);
-+      packet.payload_size = strlen(ACK)+1;
-+      send_icmp_packet(sock_fd, &packet);
-+
-+#endif
-+
-+      }
-+      free(packet.payload);
-+
-+    }
      if (FD_ISSET(tun_fd, &fs)) {
 -      printf("[DEBUG] Data needs to be readed from tun device\n");
 +      //printf("[DEBUG] Data needs to be readed from tun device\n");
@@ -693,10 +640,7 @@ index ba28e67..21b0fe5 100644
  
        if (sizeof(DEFAULT_ROUTE) > sizeof(packet.src_addr)){
          perror("Lack of space: size of DEFAULT_ROUTE > size of src_addr\n");
--        close(tun_fd);
-+
-+	close(tun_fd);
-         close(sock_fd);
+@@ -196,12 +146,13 @@ void run_tunnel(char *dest, int server)
          exit(EXIT_FAILURE);
        }
        strncpy(packet.src_addr, DEFAULT_ROUTE, strlen(DEFAULT_ROUTE) + 1);
@@ -712,7 +656,7 @@ index ba28e67..21b0fe5 100644
        strncpy(packet.dest_addr, dest, strlen(dest) + 1);
  
        if(server) {
-@@ -217,34 +211,23 @@ void run_tunnel(char *dest, int server)
+@@ -217,32 +168,61 @@ void run_tunnel(char *dest, int server)
        }
  
        packet.payload_size  = tun_read(tun_fd, packet.payload, MTU);
@@ -725,33 +669,59 @@ index ba28e67..21b0fe5 100644
 -      printf("[DEBUG] Sending ICMP packet with payload_size: %d, payload: %s\n", packet.payload_size, packet.payload);
 +      //printf("[DEBUG] Sending ICMP packet with payload_size: %d, payload: %s\n", packet.payload_size, packet.payload);
        // Sending ICMP packet
--      send_icmp_packet(sock_fd, &packet);
--
--      free(packet.payload);
--    }
--
--    if (FD_ISSET(sock_fd, &fs)) {
--      printf("[DEBUG] Received ICMP packet\n");
--      // Reading data from remote socket and sending to tun device
--
--      // Getting ICMP packet
--      memset(&packet, 0, sizeof(struct icmp_packet));
--      receive_icmp_packet(sock_fd, &packet);
 +      //printf(">> %s\n", packet.payload);
 +      //write(2, "<<", 3);
 +      //write(2, packet.payload, packet.payload_size-3);
++
+       send_icmp_packet(sock_fd, &packet);
+ 
+       free(packet.payload);
+     }
+ 
+     if (FD_ISSET(sock_fd, &fs)) {
+-      printf("[DEBUG] Received ICMP packet\n");
++      //printf("[DEBUG] Received ICMP packet\n");
+       // Reading data from remote socket and sending to tun device
+ 
+       // Getting ICMP packet
+       memset(&packet, 0, sizeof(struct icmp_packet));
+-      receive_icmp_packet(sock_fd, &packet);
  
 -      printf("[DEBUG] Read ICMP packet with src: %s, dest: %s, payload_size: %d, payload: %s\n", packet.src_addr, packet.dest_addr, packet.payload_size, packet.payload);
--      // Writing out to tun device
++      
++      receive_icmp_packet(sock_fd, &packet);
++      
++      //printf("[DEBUG] Read ICMP packet with src: %s, dest: %s, payload_size: %d, payload: %s\n", packet.src_addr, packet.dest_addr, packet.payload_size, packet.payload);
+       // Writing out to tun device
 -      tun_write(tun_fd, packet.payload, packet.payload_size);
 -
 -      printf("[DEBUG] Src address being copied: %s\n", packet.src_addr);
--      strncpy(dest, packet.src_addr, strlen(packet.src_addr) + 1);
++      //printf("<<%s\n", packet.payload);
++      
++      if(packet.payload[0] == 'S' && packet.payload[1] == 'S' && packet.payload[2] == 'H')
++      {
++	packet.payload = packet.payload+3;
++	tun_write(tun_fd, packet.payload, packet.payload_size-3);
++	//write(2, "<<", 3);
++	//write(2, packet.payload, packet.payload_size-3);
++	packet.payload = packet.payload-3;
++#ifndef NO_ROOT
+       strncpy(dest, packet.src_addr, strlen(packet.src_addr) + 1);
++
++#else
++      free(packet.payload);
++      //strncpy(packet.src_addr, DEFAULT_ROUTE, strlen(DEFAULT_ROUTE) + 1);
++      strncpy(packet.dest_addr, dest, strlen(dest) + 1);
++      set_echo_type(&packet);
++      packet.payload = malloc(strlen(ACK)+1);
++      strcpy(packet.payload, ACK);
++      packet.payload_size = strlen(ACK)+1;
 +      send_icmp_packet(sock_fd, &packet);
++
++#endif
++
++      }
++      //printf("[DEBUG] Src address being copied: %s\n", packet.src_addr);
        free(packet.payload);
      }
-+      
-+      //printf("[DEBUG] Src address being copied: %s\n", packet.src_addr);
    }
- 
- }

