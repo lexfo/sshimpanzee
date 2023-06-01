@@ -154,7 +154,7 @@ A way to combined every tunnel was introduced to get a single binary capable of 
 It is a really hacky solution which would deserve a refactor but it is still usable currently.
 Use the following command to generate a single binary combining every tunnels (and their corresponding server).
 ```
-./builder.py --tun combined,tunnels=dns:icmp:sock:proxysock:http_enc,obfuscate,path_fd=/dev/shm/lexfo_sshim,buildserv
+./builder.py --tun combined,tunnels=dns:icmp:sock:proxysock:http_enc,obfuscate,path_fd=/dev/shm/sshim,buildserv
 ```
 
 To use the generated sshd you will need to specify the `MODE` environment variables and other environment variable required by each tunnel:
