@@ -28,8 +28,8 @@ def build_dep():
         sys.exit(-1)
     if not os.path.exists("build"):
         os.mkdir("build")
-    cmd_conf = "cd musl; ./configure --prefix=$PWD --exec-prefix=$PWD --syslibdir=$PWD"
-    cmd_build = "cd musl; make -j $(nproc); make install"
+    cmd_conf = "cd musl; ./configure --prefix=$(pwd) --exec-prefix=$(pwd) --syslibdir=$(pwd)"
+    cmd_build = "cd musl; make -j $(nproc); make obj/musl-gcc; make lib/musl-gcc.specs; make install"
     if args.musl :
         print("[*] Building musl lib")
         if (run_cmd(cmd_conf)):
@@ -87,7 +87,7 @@ if __name__ == "__main__":
         build_dep()
         
     if args.musl:
-        os.environ["PATH"]+=":" + os.getcwd() + '/musl/bin/'
+        os.environ["PATH"]+=":" + os.getcwd() + '/musl/obj/'
 
     CFLAGS_add = ""
     LFLAGS_add = ""

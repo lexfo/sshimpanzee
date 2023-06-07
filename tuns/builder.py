@@ -73,9 +73,12 @@ def dns(opt):
     if args.cross_comp:
         host = f"--host {args.cross_comp}" 
         
-    cmd = f"cd  tuns/dns2tcp; ./configure  {host} LDFLAGS={args.extra_ldflags} CFLAGS='{args.extra_cflags} {defines}'; git apply ../patchs/patch_dns2tcp.patch;"
+    cmd = f"cd  tuns/dns2tcp; ./configure  {host} LDFLAGS={args.extra_ldflags} CFLAGS='{args.extra_cflags} {defines}';"
+    if run_cmd(cmd):
+        cmd = f"cd  tuns/dns2tcp; ./configure  {host} LDFLAGS={args.extra_ldflags} CFLAGS='{args.extra_cflags} {defines}' --build 'arm-linux';"
+        
+    cmd = "cd tuns/dns2tcp; git apply ../patchs/patch_dns2tcp.patch;"
     run_cmd(cmd)
-    
     cmd = f"cd tuns/dns2tcp; make clean; gcc common/debug.c -c -o client/debug.o; cd client; make;"
     run_cmd(cmd)
     print("[+] Client lib and server built") 
@@ -206,7 +209,7 @@ def sock(opt):
     if args.musl:
         CC = "musl-gcc"
     else:
-        CC = {args.compiler}
+        CC = args.compiler
     cmd = f"cd tuns/sock/; rm -f sock.o; {CC} {defines} sock.c -c -o sock.o;"
     
     if run_cmd(cmd):
