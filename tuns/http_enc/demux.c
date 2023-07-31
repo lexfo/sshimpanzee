@@ -109,7 +109,10 @@ int tun(){
 	  }
        }
    }
-    
+   kill(pid, SIGKILL);
+   wait(pid);  
+  
+
   }
   
 
