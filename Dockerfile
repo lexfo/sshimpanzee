@@ -8,7 +8,7 @@ RUN apk add autoconf gcc make  python3 git automake musl-dev build-base openssh-
 RUN git submodule init; git submodule update; true
 FROM build-stage-0 AS build-stage-1
 
-RUN python builder.py -D  -vvv  --no-musl --compiler gcc --tun combined,tunnels=dns:icmp:sock:proxysock:http_enc,path_fd=/dev/shm/sshim,buildserv -P sshimpanzee -D --shell /bin/sh --force-clean-build
+RUN python builder.py -D  -vvv  --no-musl --compiler gcc  --tun combined,tunnels=dns:icmp:sock:proxysock:http_enc,path_fd=/dev/shm/sshim,buildserv -P sshimpanzee -D --shell /bin/sh --force-clean-build | tee /build_root/build/build.log
 
 FROM scratch AS export-stage
 COPY --from=build-stage-1 /build_root/build/ /build/
