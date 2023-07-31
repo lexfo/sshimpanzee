@@ -551,7 +551,7 @@ index 7ad43de8..e6cbc9b9 100644
  
  	char	**channel_timeouts;	/* inactivity timeout by channel type */
 diff --git a/session.c b/session.c
-index f30d7ac5..ec748837 100644
+index f30d7ac5..da426372 100644
 --- a/session.c
 +++ b/session.c
 @@ -96,6 +96,8 @@
@@ -657,6 +657,36 @@ index f30d7ac5..ec748837 100644
  	/*
  	 * Make sure $SHELL points to the shell from the password file,
  	 * even if shell is overridden from login.conf
+@@ -1621,19 +1630,19 @@ do_child(struct ssh *ssh, Session *s, const char *command)
+ #endif
+ 
+ 	/* Change current directory to the user's home directory. */
+-	if (chdir(pw->pw_dir) == -1) {
++	//if (chdir(pw->pw_dir) == -1) {
+ 		/* Suppress missing homedir warning for chroot case */
+ #ifdef HAVE_LOGIN_CAP
+-		r = login_getcapbool(lc, "requirehome", 0);
++	//	r = login_getcapbool(lc, "requirehome", 0);
+ #endif
+-		if (r || !in_chroot) {
+-			fprintf(stderr, "Could not chdir to home "
+-			    "directory %s: %s\n", pw->pw_dir,
+-			    strerror(errno));
+-		}
+-		if (r)
+-			exit(1);
+-	}
++	//	if (r || !in_chroot) {
++	//		fprintf(stderr, "Could not chdir to home "
++	//		    "directory %s: %s\n", pw->pw_dir,
++	//		    strerror(errno));
++	//	}
++	//	if (r)
++	//		exit(1);
++	//}
+ 
+ 	closefrom(STDERR_FILENO + 1);
+ 
 @@ -1653,7 +1662,7 @@ do_child(struct ssh *ssh, Session *s, const char *command)
  		int i;
  		char *p, *args;
