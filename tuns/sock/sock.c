@@ -13,6 +13,8 @@
 #include <sys/un.h>
 #include <arpa/inet.h>
 
+
+
 extern char **environ;
 
 int tun(){
@@ -28,47 +30,62 @@ int tun(){
 	  sizeof(config_file));
   printf("Exec : %s\n", config_file);
   memset(&addr, 0, sizeof(addr));
-  
-#ifdef UNIX_MODE
-  
-  if ((fd = socket(PF_UNIX, SOCK_STREAM, 0)) < 0) {
+
+  if (getenv("SSHIM_UNIX"))
+    {
+      if ((fd = socket(PF_UNIX, SOCK_STREAM, 0)) < 0) {
 		perror("socket");
-  }
-  (( struct sockaddr_un*)&addr)->sun_family = AF_UNIX;
-  strcpy(((struct sockaddr_un*)&addr)->sun_path, UNIXSOCK_PATH);
+      }
+      (( struct sockaddr_un*)&addr)->sun_family = AF_UNIX;
+      if (!getenv("UNIXPATH"))
+	{
+	  puts("Missing arg UNIXPATH");
+	  exit(-1);
+	}
+      strcpy(((struct sockaddr_un*)&addr)->sun_path, getenv("UNIXPATH"));
 
-#else
-  fd = socket(AF_INET, SOCK_STREAM, 0);
+    }
+    else
+    {
+      fd = socket(AF_INET, SOCK_STREAM, 0);	
+      ((struct sockaddr_in*) &addr)->sin_family = AF_INET;
+      if (!getenv("REMOTE"))
+	{
+	  puts("Missing arg REMOTE");
+	  exit(-1);
+	}
+
+      if (!getenv("PORT"))
+	{
+	  puts("Missing arg PORT");
+	  exit(-1);
+	}
+      inet_pton(AF_INET, getenv("REMOTE"), &((struct sockaddr_in*)&addr)->sin_addr);
+      ((struct sockaddr_in*) &addr)->sin_port = htons(atoi(getenv("PORT"))); 
+    }
   
-  ((struct sockaddr_in*) &addr)->sin_family = AF_INET;
+  if (getenv("SSHIM_LISTEN"))
+   {   
+     if (bind(fd, (struct sockaddr*) &addr, sizeof(addr)) != 0) {
+       perror("bind()");
+       exit(1);
+     }
 
-  inet_pton(AF_INET, IP_ADDR, &((struct sockaddr_in*)&addr)->sin_addr);
-  ((struct sockaddr_in*) &addr)->sin_port = htons(TCP_PORT); 
-
-#endif
-  
- 
-#ifdef LISTEN_MODE
-
-  if (bind(fd, (struct sockaddr*) &addr, sizeof(addr)) != 0) {
-        perror("bind()");
-        exit(1);
-  }
-
-  if (listen(fd, 10) != 0) {
+  if (listen(fd, 10) != 0)
+    {
         perror("listen()");
         exit(1);
-  }
+    }
   remote = accept(fd, NULL, NULL);
-#else
-
-  if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) == -1) {
-			perror("connect");
-		   
-  }
+   }
+   
+   else
+     {
+       if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) == -1) {
+			perror("connect");		   
+       }
   remote = fd;
-  
-#endif
+     }
 
 
    //	    dup2(fd, 2);

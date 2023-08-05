@@ -8,3 +8,4 @@ tuns/libtun.a
 *.o
 utils/client/bin/dns2tcpd
 build/*
+tuns/combined/combiner_template_out.c

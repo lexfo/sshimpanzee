@@ -14,7 +14,7 @@
 #include <arpa/inet.h>
 
 extern char **environ;
-int c;
+char continue_http;
 
 void sighandler(int sig)
 {
@@ -22,7 +22,7 @@ void sighandler(int sig)
     unlink(FIFO_IN);
     unlink(FIFO_OUT);
     wait(&status);
-    c = 0;
+    continue_http = 0;
 }
 
 
@@ -37,7 +37,7 @@ int tun(){
   int fifo_out;
   int fifo_in;
   struct sigaction sa;
-  c = 1;
+  
  memset(&sa, 0, sizeof(sa));
  sa.sa_handler = sighandler;
 
@@ -86,8 +86,8 @@ int tun(){
       }
     close(fd0[0]);
     close(fd1[1]);
-   
-   while(c){
+    continue_http = 1;
+   while(continue_http){
      FD_ZERO(&fds);
      FD_SET(fifo_in, &fds);
      FD_SET(fd1[0], &fds);
@@ -109,7 +109,10 @@ int tun(){
 	  }
        }
    }
-    
+   kill(pid, SIGKILL);
+   waitpid(pid,&pid, WEXITED|WSTOPPED);  
+  
+
   }
   
 
