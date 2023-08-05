@@ -1,9 +1,9 @@
 diff --git a/examples/tunnel.c b/examples/tunnel.c
 new file mode 100644
-index 0000000..0ee4a59
+index 0000000..8504d01
 --- /dev/null
 +++ b/examples/tunnel.c
-@@ -0,0 +1,87 @@
+@@ -0,0 +1,79 @@
 +#include "proxysocket.h"
 +#include <stdlib.h>
 +#include <stdio.h>
@@ -28,11 +28,6 @@ index 0000000..0ee4a59
 +  int proxydns = 0;
 +  int pid,status;
 +  int remote;
-+  #ifndef AUTO 
-+  proxytype = proxysocketconfig_get_name_type(PTYPE);
-+  proxyhost = PHOST;
-+  proxyport = PPORT;
-+  #else
 +  char type[8];
 +  char host[255];
 +  char* env;
@@ -49,12 +44,9 @@ index 0000000..0ee4a59
 +   proxytype = proxysocketconfig_get_name_type(type);
 +   //   printf("%s %s %d\n", type, host, proxyport);
 +   //printf("%d\n", proxytype); 
-+  #endif
-+  #ifdef PUSER
-+  proxyuser = PUSER;  
-+  proxypass = PPASS;
++   proxyuser = getenv("PROXY_USER");  
++   proxypass = getenv("PROXY_PASS");
 +
-+  #endif
 +  proxydns = 1;
 +  //make the connection via the specified proxy
 +  SOCKET sock;
@@ -67,7 +59,7 @@ index 0000000..0ee4a59
 +  proxysocketconfig_add_proxy(proxy, proxytype, proxyhost, proxyport, proxyuser, proxypass);
 +  //connect
 +  errmsg = NULL;
-+  remote = proxysocket_connect(proxy, DST_HOST, DST_PORT, &errmsg);
++  remote = proxysocket_connect(proxy, getenv("REMOTE"), atoi(getenv("PORT")), &errmsg);
 +  if (remote != -1){
 +  char	config_file[2048];
 +  char* args[] =  {"sshd","-ir", (char*)NULL};
