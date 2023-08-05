@@ -122,7 +122,6 @@ if __name__ == "__main__":
         print("\t-> Skipping Reconf")
 
     
-    print(args.make)
     sshd_header = sshd_header.replace("<KEYFILE>", keyfile)
     sshd_header = sshd_header.replace("<REMOTE>", ip)
     sshd_header = sshd_header.replace("<PORT>", port)
