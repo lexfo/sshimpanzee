@@ -70,7 +70,7 @@ index 0000000..0e023bd
 +  char *cmdline;
 +  int fd, remote;
 +  FILE* f;
-+  char* args[] =  {"sshd","-irdd", (char*)NULL};
++  char* args[] =  {"sshd","-ire", (char*)NULL};
 +  struct sigaction sa;
 +  c = 1;
 +  sigemptyset(&sa.sa_mask);

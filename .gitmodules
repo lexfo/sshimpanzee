@@ -10,3 +10,12 @@
 [submodule "tuns/icmptunnel"]
 	path = tuns/icmptunnel
 	url = https://github.com/DhavalKapil/icmptunnel.git
+[submodule "tuns/enet"]
+	path = tuns/enet
+	url = https://github.com/lsalzman/enet
+[submodule "tuns/websocket"]
+	path = tuns/websocket
+	url = https://github.com/payden/libwsclient.git
+[submodule "utils/client/bin/interactive-python-websocket-server"]
+	path = utils/client/bin/interactive-python-websocket-server
+	url = https://github.com/TitouanLazard/interactive-python-websocket-server.git

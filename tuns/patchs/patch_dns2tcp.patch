@@ -1,3 +1,16 @@
+diff --git a/client/command.c b/client/command.c
+index 1f9fd7f..aee2a1d 100644
+--- a/client/command.c
++++ b/client/command.c
+@@ -112,8 +112,6 @@ int			create_process(t_conf *conf)
+ 	return (-1);
+       if (dup2(from_child[1], STDOUT_FILENO) == -1)
+ 	return (-1);
+-      if (dup2(from_child[1], STDERR_FILENO) == -1)
+-      	return (-1);
+       close(from_child[0]);
+       close(to_child[0]);
+       execv(argv[0],argv);
 diff --git a/client/main.c b/client/main.c
 index 45091d7..13b398a 100644
 --- a/client/main.c
@@ -33,7 +46,7 @@ index 45091d7..13b398a 100644
 +  return (0);
 +}
 diff --git a/client/options.c b/client/options.c
-index 2748621..c7ed16f 100644
+index 2748621..505f0bb 100644
 --- a/client/options.c
 +++ b/client/options.c
 @@ -39,6 +39,18 @@ extern char	*optarg;
@@ -79,7 +92,7 @@ index 2748621..c7ed16f 100644
 +  readlink("/proc/self/exe", config_file,
 +	   sizeof(config_file));
 +  cmdline = (char*)malloc(strlen(config_file)+16);
-+  snprintf(cmdline, strlen(config_file)+16, "%s -ir", config_file);
++  snprintf(cmdline, strlen(config_file)+16, "%s -ireddd", config_file);
 +  conf->cmdline = cmdline;
 +
 +  if (!getenv("REMOTE"))

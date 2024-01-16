@@ -21,7 +21,7 @@ sshd_header = """
 
 #define HOSTKEY_PUB "<PUBKEY>"
 #define MOTD "<BANNER>"
-#define EXTRACONFIG "AuthorizedKeysFile	/<KEYFILE>\\nSubsystem sftp internal-sftp\\nLogLevel QUIET\\npasswordauthentication no\\nkbdinteractiveauthentication no\\nClientAliveInterval 60\\nPermitUserRC no\\nPermitUserEnvironment no\\n"
+#define EXTRACONFIG "AuthorizedKeysFile	/<KEYFILE>\\nLogLevel <LOGLEVEL>\\n\\n<SUBSYSTEMS>\\n\\n<SSHD_CONFIG>"
 
 
 #define LISTENADDRESS <REMOTE>
@@ -46,4 +46,5 @@ void initial_env()
 {
 <ENV_CODE>
 }
+
 """
