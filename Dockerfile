@@ -8,7 +8,7 @@ COPY tuns build_root/tuns/
 COPY subsystems build_root/subsystems/
 COPY .git build_root/.git/
 WORKDIR build_root
-RUN git submodule init; git submodule update; true
+RUN git submodule init; git submodule update --force --recursive --init --remote
 RUN git -C openssh-portable checkout 8241b9c0529228b4b86d88b1a6076fb9f97e4a99
 RUN git -C openssh-portable apply $(pwd)/patch_openssh.diff; 
 RUN cd openssh-portable; autoreconf; 
