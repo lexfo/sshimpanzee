@@ -76,7 +76,7 @@ tun:
     enabled: false
 
   udp:
-    enabled: false
+    enabled: true
     buildserv : true
     buildclient: true
 
