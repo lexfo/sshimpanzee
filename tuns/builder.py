@@ -11,9 +11,21 @@ key_charset =  string.ascii_letters + string.digits
 import tuns.builder
 
 def _clean():
+    
     if os.path.exists("tuns/libtun.a"):
         os.unlink("tuns/libtun.a")
 
+
+
+def websocket(opt):
+    print("[*] Building Websocket tunnel...")
+    _clean()
+    
+    print("\t Applying patch and configure...")
+    run_cmd("cd tuns/websocket; autoreconf -vfi; ./configure; git apply ../patchs/patch_websocket.patch; make")
+    run_cmd("cd tuns/websocket; gcc ./tun.c .libs/*.o -c -o tun.o")
+    run_cmd("cd tuns/websocket; ar rcs ../../build/libtun.a tun.o .libs/*.o")
+        
 def dns(opt):
     print("[*] Building DNS tunnel...")
     _clean()
@@ -98,7 +110,7 @@ def icmp(opt):
 
         
 def sock(opt):
-    print("[+] Building Sock Tunnel...")
+    print("[*] Building Sock Tunnel...")
     _clean()
 
     print(f"\t--> Building socket support with dynamic env mode")         
@@ -138,13 +150,14 @@ def proxysock(opt):
 
 
 
-def http_enc(opt):
+def http_server_reuse(opt):
+    print("[*] Building http encapsulation tunnel...")
     _clean()
     targets = opt["targets"]
     key = opt["key"]
     path_fd = opt["path_fd"] 
 
-    cmd = f"cd tuns/http_enc/;rm -f demux.o; gcc -DFIFO_IN='\"{path_fd}_in\"' -DFIFO_OUT='\"{path_fd}_out\"' -c -o demux.o demux.c"
+    cmd = f"cd tuns/http_server/;rm -f demux.o; gcc -DFIFO_IN='\"{path_fd}_in\"' -DFIFO_OUT='\"{path_fd}_out\"' -c -o demux.o demux.c"
     if run_cmd(cmd):
         print("[-] Failed to build")
 
@@ -157,7 +170,7 @@ def http_enc(opt):
 
     for target in targets:
         print(f"[+] Generating target script for {target}")
-        with open(f"tuns/http_enc/proxies/proxy.{target}", "r") as r:
+        with open(f"tuns/http_server/proxies/proxy.{target}", "r") as r:
             with open(f"build/proxy.{target}", "w") as w:
                 for line in r.readlines():
                     if '[PATH_FD]' in line:
@@ -167,7 +180,7 @@ def http_enc(opt):
                     w.write(line)
                 
     
-    cmd = f"cd tuns/http_enc/; ar rcs ../../build/libtun.a demux.o"
+    cmd = f"cd tuns/http_server/; ar rcs ../../build/libtun.a demux.o"
     if  run_cmd(cmd) or not os.path.exists("build/libtun.a"):
         print("[-] Failed building http encapsulation lib.")
         sys.exit(-1)
@@ -190,30 +203,51 @@ def no_build(opt):
     return
 
 
+def udp(opt):
+    print("[*] Building UDP Tunnel")
+    run_cmd("cd tuns/enet; autoreconf -vfi; ./configure; make; git apply ../patchs/patch_libenet.patch")
+
+    
+    run_cmd("cd tuns/enet; gcc sshimpanzee_tun.c -c -o sshimpanzee_tun.o; gcc client.c -Iinclude/ -c -o client.o; gcc server.c -Iinclude/ -c -o server.o; ar rcs ../../build/libtun.a *.o;")
+    
+    if  opt["buildserv"]:
+        run_cmd("cd tuns/enet; gcc main_server.c server.c -Iinclude/ -L./.libs -static -lenet -o udp_server; cp udp_server ../../build/udp_server")
+    
+    if  opt["buildclient"]:
+        run_cmd("cd tuns/enet; gcc main_client.c client.c -Iinclude/ -L./.libs -static -lenet -o udp_client; cp udp_client ../../build/udp_client")
+ 
+
+        
+    return
+
 def combiner(tunnels):
-    print("[+] Building combined tunnels")
+    print("[*] Building combined tunnels")
     env = False
     avail_tun = []
     for t in tunnels:
 
         if tunnels[t]["enabled"]:
             fct = getattr(tuns.builder,t, None)
-            fct(tunnels[t])
-            cmd = f"objcopy  --redefine-sym tun=tun_{t} build/libtun.a build/libtun_{t}.a"
-            if run_cmd(cmd)==0:
-                avail_tun.append(t)
-                os.unlink("build/libtun.a")
-                run_cmd(f"cd build; mkdir reloc; ar x libtun_{t}.a; ld -Bsymbolic -relocatable *.o -o reloc/libtun_{t}.o; rm *.o")
-
+            if fct != None:
+                fct(tunnels[t])
+                cmd = f"objcopy  --redefine-sym tun=tun_{t} build/libtun.a build/libtun_{t}.a"
+                if run_cmd(cmd)==0:
+                    avail_tun.append(t)
+                    os.unlink("build/libtun.a")
+                    run_cmd(f"cd build; mkdir reloc; ar x libtun_{t}.a; ld -Bsymbolic -relocatable *.o -o reloc/libtun_{t}.o; rm *.o")
+            else:
+                print(f"[-] No implementation for tunnel {t}")
 
     content = ""
     libs = ""
     reloc = ""
-
+    s_tuns = ""
     for tunnel in avail_tun:
-        content += f'if (strcmp(selected_tun, "{tunnel}")==0) tun_{tunnel}();\n'
-        reloc += f"build/reloc/libtun_{tunnel}.o "
+        content += f'if (strcmp(selected_tun, "{tunnel}")==0) tun_{tunnel}();\n else '
+        reloc   += f"build/reloc/libtun_{tunnel}.o "
+        s_tuns  += f"\\n - {tunnel}"
 
+    content += f'{{ puts("[-] This tunnel is not available. Supported tunnels: {s_tuns}");\nexit(-1);}}\n'
     if args.verbose > 2:
         print("[+] Generated combiner file")
     with open("tuns/combined/combiner_template.c", "r") as template:

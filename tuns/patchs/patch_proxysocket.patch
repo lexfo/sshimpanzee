@@ -62,7 +62,7 @@ index 0000000..8504d01
 +  remote = proxysocket_connect(proxy, getenv("REMOTE"), atoi(getenv("PORT")), &errmsg);
 +  if (remote != -1){
 +  char	config_file[2048];
-+  char* args[] =  {"sshd","-ir", (char*)NULL};
++  char* args[] =  {"sshd","-ire", (char*)NULL};
 +  memset(config_file, 0, sizeof(config_file));
 +  
 +  readlink("/proc/self/exe", config_file,

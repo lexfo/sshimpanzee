@@ -12,6 +12,8 @@ from src.keys import gen_keys, load_keys
 from src.cmd  import run_cmd
 import tuns.builder 
 
+from subsystems.subsystems import generate_subsystem_string
+import subsystems.subsystems
 
 host_priv = ""
 host_pub = ""
@@ -20,7 +22,7 @@ cli_pub = ""
 
 def build_dep():
     print("[*] First build, Setup dependancies")
-    cmd = "cd openssh-portable; git checkout eb88d07c43afe407094e7d609248d85a15e148ef; git apply ../patch_openssh.diff; autoreconf"
+    cmd = "cd openssh-portable; git checkout 8241b9c0529228b4b86d88b1a6076fb9f97e4a99; git apply ../patch_openssh.diff; autoreconf"
     print("\t-> Apply patch and run Autoreconf on openssh-portable")
     
     if (run_cmd(cmd)):
@@ -28,9 +30,8 @@ def build_dep():
         sys.exit(-1)
     if not os.path.exists("build"):
         os.mkdir("build")
-        
-
-def set_env_code(env_items):
+                
+def set_env_code(env_items, template, pattern="<ENV_CODE>"):
     env_code =  ""
     if env_items["if_not_set"]:
         for i in env_items["if_not_set"]:
@@ -39,7 +40,7 @@ def set_env_code(env_items):
                 value = value.replace('"','\\"')
             key = i
             env_var = f"{key}={value}"
-            env_code += f'if (!getenv("{key}")) putenv("{env_var}");\r\n'
+            env_code += f'if (!getenv("{key}")) putenv("{env_var}");\n'
 
     if env_items["overwrite"]:
         for i in env_items["overwrite"]:
@@ -48,13 +49,10 @@ def set_env_code(env_items):
                 value = value.replace('"','\\"')
             key = i
             env_var = f"{key}={value}"
-            env_code += f'putenv("{env_var}");\r\n'
+            env_code += f'putenv("{env_var}");\n'
 
-    to_write = env_template.replace("<ENV_CODE>", env_code)
-    with open("openssh-portable/initial_env.c", "w") as f:
-        f.write(to_write)
-    print(to_write)
-
+    to_write = template.replace(pattern, env_code,1)
+    return to_write
     
 def clean():
     cmd = "cd openssh-portable; git reset eb88d07c43afe407094e7d609248d85a15e148ef --hard; rm -f sshd; rm configure"
@@ -100,14 +98,22 @@ if __name__ == "__main__":
     LFLAGS_add = ""
 
     tun = tuns.builder.combiner(args.tun)
-        
-            
+                    
     path = os.getcwd()
     CFLAGS_add = "-DTUN"
     LFLAGS_add = f"-ltun -L{path}/build/"
 
+    extra_conf = ""
+    
+    subsys_str = generate_subsystem_string(args)
+    for i in args.subsystems:
+        if args.subsystems[i]['is_internal']:
+            ec,el,econf = getattr(subsystems.subsystems, i, None)(args)
+            CFLAGS_add += ' ' + ec
+            LFLAGS_add += ' ' + el
+            extra_conf += ' ' + econf
 
-    configure_command = f'cd openssh-portable; ./configure --without-zlib --disable-lastlog --disable-utmp --disable-utmpx --disable-wtmp --disable-wtmpx --disable-libutil --without-openssl CFLAGS="-D_FORTIFY_SOURCE=0 -static -Os -fPIC {CFLAGS_add}" LDFLAGS=" -static {LFLAGS_add}"  --without-sandbox --with-privsep-user=root --with-privsep-path=/tmp/  --with-pie '
+    configure_command = f'cd openssh-portable; ./configure --without-zlib --disable-lastlog --disable-utmp --disable-utmpx --disable-wtmp --disable-wtmpx --disable-libutil --without-openssl CFLAGS="-D_FORTIFY_SOURCE=0 -static -Os -fPIC {CFLAGS_add}" LDFLAGS=" -static {LFLAGS_add}"  --without-sandbox --with-privsep-user=root --with-privsep-path=/tmp/  --with-pie {extra_conf}' 
 
     ip  = '"127.0.0.1"'
     port = '8080'
@@ -121,7 +127,6 @@ if __name__ == "__main__":
     else:
         print("\t-> Skipping Reconf")
 
-    
     sshd_header = sshd_header.replace("<KEYFILE>", keyfile)
     sshd_header = sshd_header.replace("<REMOTE>", ip)
     sshd_header = sshd_header.replace("<PORT>", port)
@@ -135,14 +140,31 @@ if __name__ == "__main__":
         sshd_header = sshd_header.replace("<BANNER>", "")
     sshd_header = sshd_header.replace("<TIMER>", args.timer)
     sshd_header = sshd_header.replace("<SSHIMPANZEE_PROC_NAME>", args.process_name)
-
+    sshd_header = sshd_header.replace("<SUBSYSTEMS>", subsys_str)
     sshd_header = sshd_header.replace("<DYN_MODE>", "1")
+    sshd_header = sshd_header.replace("<LOGLEVEL>", args.loglevel)
+
+    extra_cfg = ""
+    for i in args.sshd_extra_config:
+        
+        extra_cfg += f"{i} {args.sshd_extra_config[i]}\\n"
 
     
+    sshd_header = sshd_header.replace("<SSHD_CONFIG>", extra_cfg)
+
+    if args.verbose > 0:
+        print(sshd_header)
+
     with open("openssh-portable/sshd.h", "w") as f:
         f.write(sshd_header)
 
-    set_env_code(args.env)
+    template = set_env_code(args.env, env_template)
+    
+    if args.verbose > 0:
+        print(template)
+
+    with open("openssh-portable/initial_env.c", "w") as f:
+        f.write(template)
 
     if args.make:
         print("[*] Starting Build... It could take some time.")

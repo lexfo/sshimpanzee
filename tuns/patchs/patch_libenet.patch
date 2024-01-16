@@ -1,0 +1,280 @@
+diff --git a/client.c b/client.c
+new file mode 100644
+index 0000000..6a5bb65
+--- /dev/null
++++ b/client.c
+@@ -0,0 +1,94 @@
++#include <enet/enet.h>
++#include <stdio.h>
++#include <string.h>
++#include <stdlib.h>
++#include <sys/poll.h>
++
++
++int client_enet(int fd_in, int fd_out, char* remote, int port)
++{
++    ENetAddress address;
++    ENetHost *client;
++    ENetPeer *peer;
++    ENetEvent event;
++    int eventStatus;
++    struct pollfd fds[2];
++    int rc;
++    char buffer_read[1024];
++    int r;
++    int connected;
++    // a. Initialize enet
++    if (enet_initialize() != 0) {
++        fprintf(stderr, "An error occured while initializing ENet.\n");
++        return EXIT_FAILURE;
++    }
++
++    atexit(enet_deinitialize);
++
++    // b. Create a host using enet_host_create
++    client = enet_host_create(NULL, 1, 2, 57600/8, 14400/8);
++
++    if (client == NULL) {
++        fprintf(stderr, "An error occured while trying to create an ENet server host\n");
++        exit(EXIT_FAILURE);
++    }
++
++    enet_address_set_host(&address, remote);
++    address.port = port;
++
++    // c. Connect and user service
++    peer = enet_host_connect(client, &address, 2, 0);
++
++    if (peer == NULL) {
++        fprintf(stderr, "No available peers for initializing an ENet connection");
++        exit(EXIT_FAILURE);
++    }
++    while(connected == 0)
++      {
++	
++	eventStatus = enet_host_service(client, &event, 2000);
++	
++	if (eventStatus > 0 && event.type == ENET_EVENT_TYPE_CONNECT)
++	  connected = 1;
++	
++      }
++    
++
++    while (1) {
++      
++	fds[0].fd = fd_in;
++	fds[0].events = POLLIN;
++	fds[0].revents = 0;
++
++	fds[1].fd = client->socket;
++	fds[1].events = POLLIN;
++	fds[1].revents = 0;
++	rc = poll(fds, 2, -1);
++	
++	if(rc>0 && fds[0].revents == POLLIN)
++	  {
++	    //printf("Data are ready to be read\n");
++	    r = read(fd_in, buffer_read, sizeof(buffer_read));
++	    ENetPacket *packet = enet_packet_create(buffer_read, r, ENET_PACKET_FLAG_RELIABLE);
++            enet_peer_send(peer, 0, packet);
++	  }
++	eventStatus = 1;
++	while (eventStatus!=0)
++	  {
++	  eventStatus = enet_host_service(client, &event, 0);  
++	      // If we had some event that interested us
++	  if (eventStatus > 0) {
++		
++	    switch(event.type) {		    
++	    case ENET_EVENT_TYPE_RECEIVE:
++	      write(fd_out, event.packet->data, event.packet->dataLength);
++	      fsync(fd_out);
++	      enet_packet_destroy(event.packet);
++	      break;
++	    }
++	  }
++	  }
++	if (r<0)
++	  exit(0);
++    }
++}
+diff --git a/main_client.c b/main_client.c
+new file mode 100644
+index 0000000..cbeca12
+--- /dev/null
++++ b/main_client.c
+@@ -0,0 +1,12 @@
++#include <stdio.h>
++#include <stdlib.h>
++extern int client_enet(int,int, char*, int);
++
++int main(int argc, char** argv){
++  if(argc<3)
++    {
++      fprintf(stderr, "Usage : %s <REMOTE> <PORT>\n", argv[0]);
++      return -1;
++    }  
++  return client_enet(0,1, argv[1], atoi(argv[2]));
++}
+diff --git a/main_server.c b/main_server.c
+new file mode 100644
+index 0000000..1f16ec8
+--- /dev/null
++++ b/main_server.c
+@@ -0,0 +1,13 @@
++#include <stdio.h>
++#include <stdlib.h>
++extern int server_enet(int,int, int);
++
++int main(int argc, char** argv){
++  if(argc < 2)
++    {
++      fprintf(stderr, "Usage: %s <PORT>\n", argv[0]);
++      exit(-1);
++    }
++    
++  return server_enet(0,1, atoi(argv[1]));
++}
+diff --git a/server.c b/server.c
+new file mode 100644
+index 0000000..4826dfb
+--- /dev/null
++++ b/server.c
+@@ -0,0 +1,88 @@
++// server.c
++#include <enet/enet.h>
++#include <stdio.h>
++#include <string.h>
++#include <stdlib.h>
++#include <sys/poll.h>
++
++int server_enet(int fd_in, int fd_out, int port)
++{
++    ENetAddress address;
++    ENetHost *server;
++    ENetEvent event;
++    int eventStatus;
++
++    struct pollfd fds[2];
++    int rc;
++    char buffer_read[1024];
++    int r;
++    int connected = 0;
++    
++    // a. Initialize enet
++    if (enet_initialize() != 0) {
++        fprintf(stderr, "An error occured while initializing ENet.\n");
++        return EXIT_FAILURE;
++    }
++
++    atexit(enet_deinitialize);
++
++    // b. Create a host using enet_host_create
++    address.host = ENET_HOST_ANY;
++    address.port = port;
++    
++    server = enet_host_create(&address, 32, 2, 0, 0);
++
++    if (server == NULL) {
++        fprintf(stderr, "An error occured while trying to create an ENet server host\n");
++        exit(EXIT_FAILURE);
++    }
++    while(1)
++      {
++      eventStatus = enet_host_service(server, &event, 1000);
++      if (eventStatus > 0 && event.type == ENET_EVENT_TYPE_CONNECT)
++	{
++		    connected = 1;
++		    break;
++	}
++      }
++    while (1) {
++	fds[0].fd = fd_in;
++	fds[0].events = POLLIN;
++	fds[0].revents = 0;
++
++	fds[1].fd = server->socket;
++	fds[1].events = POLLIN;
++	fds[1].revents = 0;
++
++	  
++	rc = poll(fds, 2, -1);
++
++	if(rc > 0 && fds[0].revents == POLLIN)
++	  {
++	    r = read(fd_in, buffer_read, sizeof(buffer_read));
++	    ENetPacket *packet = enet_packet_create(buffer_read, r, ENET_PACKET_FLAG_RELIABLE);
++	    if(connected != 0)
++	      {
++		enet_peer_send(&(server->peers[0]), 0, packet);
++
++	      }
++	  }
++	eventStatus = 1;
++	while (eventStatus!=0)
++	  {
++	  eventStatus = enet_host_service(server, &event, 0);  
++	      // If we had some event that interested us
++	  if (eventStatus > 0) {
++		
++	    switch(event.type) {		    
++	    case ENET_EVENT_TYPE_RECEIVE:
++	      write(fd_out, event.packet->data, event.packet->dataLength);
++	      fsync(fd_out);
++	      enet_packet_destroy(event.packet);
++	      break;
++	    }
++	  }
++	  }   
++    }
++
++}
+diff --git a/sshimpanzee_tun.c b/sshimpanzee_tun.c
+new file mode 100644
+index 0000000..ea76447
+--- /dev/null
++++ b/sshimpanzee_tun.c
+@@ -0,0 +1,43 @@
++#include <stdio.h>
++#include <stdlib.h>
++#include  <string.h>                             //
++#include  <unistd.h>            
++
++
++extern char **environ;
++extern int client_enet(int,int, char*, int);
++extern int server_enet(int,int, int);
++
++int tun(){
++  char	config_file[2048];
++  char *cmdline;
++  int pid,status;
++  char* args[] =  {"sshd","-ire", (char*)NULL};
++  int fd0[2];
++  int fd1[2];
++
++  memset(config_file, 0, sizeof(config_file));
++  
++  readlink("/proc/self/exe", config_file,
++	  sizeof(config_file));
++  printf("Exec : %s\n", config_file);
++
++  pipe(fd0);
++  pipe(fd1);
++  pid = fork();
++  if (pid==0){ 
++   dup2(fd0[0], 0);
++   dup2(fd1[1], 1);
++   close(fd0[1]);
++   close(fd1[0]);
++   
++   execve(config_file, args ,environ); 
++  }
++  else
++    {
++      if(getenv("UDP_SERV"))
++	server_enet(fd1[0], fd0[1], atoi(getenv("PORT")));
++      else
++	client_enet(fd1[0], fd0[1],getenv("REMOTE"), atoi(getenv("PORT")));
++    }
++}

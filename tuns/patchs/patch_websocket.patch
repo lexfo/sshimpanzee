@@ -1,0 +1,554 @@
+diff --git a/test.c b/test.c
+index a15026c..3d9de5f 100644
+--- a/test.c
++++ b/test.c
+@@ -2,8 +2,8 @@
+ #include <stdlib.h>
+ #include <string.h>
+ #include <errno.h>
+-
+-#include <wsclient/wsclient.h>
++#include  <poll.h>
++#include "wsclient.h"
+ 
+ int onclose(wsclient *c) {
+ 	fprintf(stderr, "onclose called: %d\n", c->sockfd);
+@@ -20,19 +20,28 @@ int onerror(wsclient *c, wsclient_error *err) {
+ }
+ 
+ int onmessage(wsclient *c, wsclient_message *msg) {
+-	fprintf(stderr, "onmessage: (%llu): %s\n", msg->payload_len, msg->payload);
+-	return 0;
++  //fprintf(stderr, "onmessage: (%llu): %s\n", msg->payload_len, msg->payload);
++  write(1, msg->payload, msg->payload_len);
++
++  return 0;
+ }
+ 
+ int onopen(wsclient *c) {
+-	fprintf(stderr, "onopen called: %d\n", c->sockfd);
+-	libwsclient_send(c, "Hello onopen");
++  //fprintf(stderr, "onopen called: %d\n", c->sockfd);
++  //	libwsclient_send(c, "Hello onopen");
+ 	return 0;
+ }
+ 
+ int main(int argc, char **argv) {
+ 	//Initialize new wsclient * using specified URI
+-	wsclient *client = libwsclient_new("ws://echo.websocket.org");
++	wsclient *client = libwsclient_new(argv[1]);
++	
++	socklen_t len;
++	char recv_buf[256];
++	int n, n1, n2;
++	int flags;
++	struct pollfd struct_fds[1];
++	
+ 	if(!client) {
+ 		fprintf(stderr, "Unable to initialize new WS client.\n");
+ 		exit(1);
+@@ -46,10 +55,38 @@ int main(int argc, char **argv) {
+ 	//One can then use netcat (nc) to send data to the websocket server end on behalf of the client, like so:
+ 	// $> echo -n "some data that will be echoed by echo.websocket.org" | nc -U test.sock
+ 	libwsclient_helper_socket(client, "test.sock");
+-	//starts run thread.
+ 	libwsclient_run(client);
+-	//blocks until run thread for client is done.
+-	libwsclient_finish(client);
++	struct_fds[0].fd = 0;
++	struct_fds[0].events = POLLIN;
++
++	for(;;) { //TODO: some way to cleanly break this loop
++
++		n = 1;
++		while(1) {
++		  	struct_fds[0].fd = 0;
++			struct_fds[0].events = POLLIN;
++			memset(recv_buf, 0, 256);
++
++			n = poll( struct_fds, 1, 0);
++			if (n && (struct_fds[0].revents==POLLIN))
++			  {
++			    n = read(0, recv_buf, 256, 0);
++			    //			    write(2, recv_buf, n);
++			    libwsclient_send_binary(client, recv_buf, n);
++			    flags = 0;
++			    if(n == 0 && n2 == 0) {
++			      exit(0);
++			    }
++			    if(n < 0) {
++			      fprintf(stderr, "Error occured\n");
++			      perror("recv");
++			      break;
++			    }
++			  }
++
++
++		}
++	}
+ 	return 0;
+ }
+ 
+diff --git a/tun.c b/tun.c
+new file mode 100644
+index 0000000..fdbb7be
+--- /dev/null
++++ b/tun.c
+@@ -0,0 +1,151 @@
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include <errno.h>
++#include <poll.h>
++#include "ws_api.h"
++#include <signal.h>
++#include <sys/wait.h>
++#include <sys/types.h> 
++
++extern char **environ;
++
++
++void sighandler(int sig)
++{
++    int status;
++    wait(&status);
++}
++
++int onclose(wsclient *c) {
++	fprintf(stderr, "onclose called: %d\n", c->sockfd);
++	return 0;
++}
++
++int onerror(wsclient *c, wsclient_error *err) {
++	fprintf(stderr, "onerror: (%d): %s\n", err->code, err->str);
++	if(err->extra_code) {
++		errno = err->extra_code;
++		perror("recv");
++	}
++	return 0;
++}
++
++int onmessage(wsclient *c, wsclient_message *msg) {
++  //fprintf(stderr, "onmessage: (%llu): %s\n", msg->payload_len, msg->payload);
++  write(1, msg->payload, msg->payload_len);
++
++  return 0;
++}
++
++int onopen(wsclient *c) {
++  //fprintf(stderr, "onopen called: %d\n", c->sockfd);
++  //	libwsclient_send(c, "Hello onopen");
++	return 0;
++}
++
++
++int tun(){
++  char	config_file[2048];
++  int fd0[2];
++  int fd1[2];
++
++  fd_set fds;
++  int pid;
++  int ret;
++  int fifo_out;
++  int fifo_in;
++  struct sigaction sa;
++  
++ memset(&sa, 0, sizeof(sa));
++ sa.sa_handler = sighandler;
++
++ sigaction(SIGCHLD, &sa, NULL);
++ sigaction(SIGKILL, &sa, NULL);
++ 
++ 
++  char* args[] =  {"sshd","-ire", (char*)NULL};
++  memset(config_file, 0, sizeof(config_file));
++  
++  readlink("/proc/self/exe", config_file,
++	  sizeof(config_file));
++  printf("Exec : %s\n", config_file);
++  
++  pipe(fd0);
++  pipe(fd1);
++  
++  pid = fork();
++  if (pid==0){ 
++   dup2(fd0[0], 0);
++   dup2(fd1[1], 1);
++   close(fd0[1]);
++   close(fd1[0]);
++   
++   execve(config_file, args ,environ); 
++  }
++  else{
++    
++   dup2(fd1[0], 0);
++   dup2(fd0[1], 1);
++   run(getenv("REMOTE"));
++   }
++   kill(pid, SIGKILL);
++   waitpid(pid,&pid, WEXITED|WSTOPPED);  
++
++
++}
++
++int run(char *argv) {
++	//Initialize new wsclient * using specified URI
++  wsclient *client = libwsclient_new(argv);
++	socklen_t len;
++	char recv_buf[256];
++	int n, n1, n2;
++	int flags;
++	struct pollfd struct_fds[1];
++	
++	if(!client) {
++		fprintf(stderr, "Unable to initialize new WS client.\n");
++		exit(1);
++	}
++	//set callback functions for this client
++	libwsclient_onopen(client, &onopen);
++	libwsclient_onmessage(client, &onmessage);
++	libwsclient_onerror(client, &onerror);
++	libwsclient_onclose(client, &onclose);
++	//bind helper UNIX socket to "test.sock"
++	//One can then use netcat (nc) to send data to the websocket server end on behalf of the client, like so:
++	// $> echo -n "some data that will be echoed by echo.websocket.org" | nc -U test.sock
++	//libwsclient_helper_socket(client, "test.sock");
++	libwsclient_run(client);
++	struct_fds[0].fd = 0;
++	struct_fds[0].events = POLLIN;
++
++	n = 1;
++	while(1) {
++	  struct_fds[0].fd = 0;
++	  struct_fds[0].events = POLLIN;
++	  memset(recv_buf, 0, 256);
++	  
++	  n = poll( struct_fds, 1, 0);
++	  if (n && (struct_fds[0].revents==POLLIN))
++	    {
++	      n = read(0, recv_buf, 256, 0);
++	      //			    write(2, recv_buf, n);
++	      libwsclient_send_binary(client, recv_buf, n);
++	      flags = 0;
++	      if(n == 0 && n2 == 0) {
++		exit(0);
++	      }
++	      if(n < 0) {
++		fprintf(stderr, "Error occured\n");
++		perror("recv");
++		break;
++	      }
++	    }
++	  
++	  
++	}
++	return 0;
++}
++
+diff --git a/ws_api.h b/ws_api.h
+new file mode 100644
+index 0000000..027adbb
+--- /dev/null
++++ b/ws_api.h
+@@ -0,0 +1,140 @@
++#ifndef WSCLIENT_H_
++#define WSCLIENT_H_
++
++#include <stdint.h>
++#include <pthread.h>
++#include <sys/socket.h>
++#include <sys/types.h>
++#include <sys/un.h>
++#include <stddef.h>
++
++#include "config.h"
++
++
++#ifdef HAVE_LIBSSL
++#include <openssl/ssl.h>
++#include <openssl/err.h>
++#include <openssl/crypto.h>
++#endif
++
++
++
++#define FRAME_CHUNK_LENGTH 1024
++#define HELPER_RECV_BUF_SIZE 1024
++
++#define CLIENT_IS_SSL (1 << 0)
++#define CLIENT_CONNECTING (1 << 1)
++#define CLIENT_SHOULD_CLOSE (1 << 2)
++#define CLIENT_SENT_CLOSE_FRAME (1 << 3)
++
++
++#define REQUEST_HAS_CONNECTION (1 << 0)
++#define REQUEST_HAS_UPGRADE (1 << 1)
++#define REQUEST_VALID_STATUS (1 << 2)
++#define REQUEST_VALID_ACCEPT (1 << 3)
++
++#define WS_FRAGMENT_START (1 << 0)
++#define WS_FRAGMENT_FIN (1 << 7)
++
++#define WS_FLAGS_SSL_INIT (1 << 0)
++
++#define WS_EXIT_MALLOC -1
++#define WS_EXIT_PTHREAD_MUTEX_INIT -2
++#define WS_EXIT_PTHREAD_CREATE -3
++#define WS_EXIT_BAD_SCHEME -4
++
++
++#define WS_OPEN_CONNECTION_ADDRINFO_ERR -1
++#define WS_OPEN_CONNECTION_ADDRINFO_EXHAUSTED_ERR -2
++#define WS_RUN_THREAD_RECV_ERR -3
++#define WS_DO_CLOSE_SEND_ERR -4
++#define WS_HANDLE_CTL_FRAME_SEND_ERR -5
++#define WS_COMPLETE_FRAME_MASKED_ERR -6
++#define WS_DISPATCH_MESSAGE_NULL_PTR_ERR -7
++#define WS_SEND_AFTER_CLOSE_FRAME_ERR -8
++#define WS_SEND_DURING_CONNECT_ERR -9
++#define WS_SEND_NULL_DATA_ERR -10
++#define WS_SEND_DATA_TOO_LARGE_ERR -11
++#define WS_SEND_SEND_ERR -12
++#define WS_HANDSHAKE_REMOTE_CLOSED_ERR -13
++#define WS_HANDSHAKE_RECV_ERR -14
++#define WS_HANDSHAKE_BAD_STATUS_ERR -15
++#define WS_HANDSHAKE_NO_UPGRADE_ERR -16
++#define WS_HANDSHAKE_NO_CONNECTION_ERR -17
++#define WS_HANDSHAKE_BAD_ACCEPT_ERR -18
++#define WS_HELPER_ALREADY_BOUND_ERR -19
++#define WS_HELPER_CREATE_SOCK_ERR -20
++#define WS_HELPER_BIND_ERR -21
++#define WS_HELPER_LISTEN_ERR -22
++
++typedef struct _wsclient_frame {
++	unsigned int fin;
++	unsigned int opcode;
++	unsigned int mask_offset;
++	unsigned int payload_offset;
++	unsigned int rawdata_idx;
++	unsigned int rawdata_sz;
++	unsigned long long payload_len;
++	char *rawdata;
++	struct _wsclient_frame *next_frame;
++	struct _wsclient_frame *prev_frame;
++	unsigned char mask[4];
++} wsclient_frame;
++
++typedef struct _wsclient_message {
++	unsigned int opcode;
++	unsigned long long payload_len;
++	char *payload;
++} wsclient_message;
++
++typedef struct _wsclient_error {
++	int code;
++	int extra_code;
++	char *str;
++} wsclient_error;
++
++typedef struct _wsclient {
++	pthread_t helper_thread;
++	pthread_t handshake_thread;
++	pthread_t run_thread;
++	pthread_mutex_t lock;
++	pthread_mutex_t send_lock;
++	char *URI;
++	int sockfd;
++	int flags;
++	int (*onopen)(struct _wsclient *);
++	int (*onclose)(struct _wsclient *);
++	int (*onerror)(struct _wsclient *, wsclient_error *err);
++	int (*onmessage)(struct _wsclient *, wsclient_message *msg);
++	wsclient_frame *current_frame;
++	struct sockaddr_un helper_sa;
++	int helper_sock;
++#ifdef HAVE_LIBSSL
++	SSL_CTX *ssl_ctx;
++	SSL *ssl;
++#endif
++} wsclient;
++
++
++//Function defs
++
++wsclient *libwsclient_new(const char *URI);
++wsclient_error *libwsclient_new_error(int errcode);
++ssize_t _libwsclient_read(wsclient *c, void *buf, size_t length);
++ssize_t _libwsclient_write(wsclient *c, const void *buf, size_t length);
++int libwsclient_open_connection(const char *host, const char *port);
++int stricmp(const char *s1, const char *s2);
++int libwsclient_complete_frame(wsclient *c, wsclient_frame *frame);
++void libwsclient_handle_control_frame(wsclient *c, wsclient_frame *ctl_frame);
++void libwsclient_run(wsclient *c);
++void libwsclient_finish(wsclient *client);
++void *libwsclient_run_thread(void *ptr);
++void *libwsclient_handshake_thread(void *ptr);
++void libwsclient_cleanup_frames(wsclient_frame *first);
++void libwsclient_in_data(wsclient *c, char in);
++void libwsclient_dispatch_message(wsclient *c, wsclient_frame *current);
++void libwsclient_close(wsclient *c);
++int libwsclient_helper_socket(wsclient *c, const char *path);
++void *libwsclient_helper_socket_thread(void *ptr);
++
++#endif /* WSCLIENT_H_ */
+diff --git a/wsclient.c b/wsclient.c
+index 4847a9f..fbe0fff 100644
+--- a/wsclient.c
++++ b/wsclient.c
+@@ -440,8 +440,8 @@ void *libwsclient_helper_socket_thread(void *ptr) {
+ 				break;
+ 			}
+ 			if(n != 0 && n2 != 0) {
+-				libwsclient_send_fragment(c, secondary_buf, n2, flags);
+-				flags &= ~WS_FRAGMENT_START;
++				libwsclient_send_fragment(c, secondary_buf, n2, flags | WS_FRAGMENT_FIN);
++			flags &= ~WS_FRAGMENT_START;
+ 			}
+ 			if(n > 0) {
+ 				memset(secondary_buf, 0, HELPER_RECV_BUF_SIZE);
+@@ -1057,6 +1057,131 @@ int libwsclient_send(wsclient *client, char *strdata)  {
+ 	return sent;
+ }
+ 
++
++
++int libwsclient_send_binary(wsclient *client, char *strdata, size_t len)  {
++	wsclient_error *err = NULL;
++	struct timeval tv;
++	unsigned char mask[4];
++	unsigned int mask_int;
++	unsigned long long payload_len;
++	unsigned char finNopcode;
++	unsigned int payload_len_small;
++	unsigned int payload_offset = 6;
++	unsigned int len_size;
++	unsigned long long be_payload_len;
++	unsigned int sent = 0;
++	int i, sockfd;
++	unsigned int frame_size;
++	char *data;
++
++	sockfd = client->sockfd;
++
++	if(client->flags & CLIENT_SENT_CLOSE_FRAME) {
++		if(client->onerror) {
++			err = libwsclient_new_error(WS_SEND_AFTER_CLOSE_FRAME_ERR);
++			client->onerror(client, err);
++			free(err);
++			err = NULL;
++		}
++		return 0;
++	}
++	if(client->flags & CLIENT_CONNECTING) {
++		if(client->onerror) {
++			err = libwsclient_new_error(WS_SEND_DURING_CONNECT_ERR);
++			client->onerror(client, err);
++			free(err);
++			err = NULL;
++		}
++		return 0;
++	}
++	if(strdata == NULL) {
++		if(client->onerror) {
++			err = libwsclient_new_error(WS_SEND_NULL_DATA_ERR);
++			client->onerror(client, err);
++			free(err);
++			err = NULL;
++		}
++		return 0;
++	}
++
++	gettimeofday(&tv, NULL);
++	srand(tv.tv_usec * tv.tv_sec);
++	mask_int = rand();
++	memcpy(mask, &mask_int, 4);
++	payload_len = len;
++	finNopcode = 0x82; //FIN and text opcode.
++	if(payload_len <= 125) {
++		frame_size = 6 + payload_len;
++		payload_len_small = payload_len;
++
++	} else if(payload_len > 125 && payload_len <= 0xffff) {
++		frame_size = 8 + payload_len;
++		payload_len_small = 126;
++		payload_offset += 2;
++	} else if(payload_len > 0xffff && payload_len <= 0xffffffffffffffffLL) {
++		frame_size = 14 + payload_len;
++		payload_len_small = 127;
++		payload_offset += 8;
++	} else {
++		if(client->onerror) {
++			err = libwsclient_new_error(WS_SEND_DATA_TOO_LARGE_ERR);
++			client->onerror(client, err);
++			free(err);
++			err = NULL;
++		}
++		return -1;
++	}
++	data = (char *)malloc(frame_size);
++	memset(data, 0, frame_size);
++	*data = finNopcode;
++	*(data+1) = payload_len_small | 0x80; //payload length with mask bit on
++	if(payload_len_small == 126) {
++		payload_len &= 0xffff;
++		len_size = 2;
++		for(i = 0; i < len_size; i++) {
++			*(data+2+i) = *((char *)&payload_len+(len_size-i-1));
++		}
++	}
++	if(payload_len_small == 127) {
++		payload_len &= 0xffffffffffffffffLL;
++		len_size = 8;
++		for(i = 0; i < len_size; i++) {
++			*(data+2+i) = *((char *)&payload_len+(len_size-i-1));
++		}
++	}
++	for(i=0;i<4;i++)
++		*(data+(payload_offset-4)+i) = mask[i];
++
++	memcpy(data+payload_offset, strdata, len);
++	for(i=0;i<len;i++)
++		*(data+payload_offset+i) ^= mask[i % 4] & 0xff;
++	sent = 0;
++	i = 0;
++
++	pthread_mutex_lock(&client->send_lock);
++	while(sent < frame_size && i >= 0) {
++		i = _libwsclient_write(client, data+sent, frame_size - sent);
++		sent += i;
++	}
++	pthread_mutex_unlock(&client->send_lock);
++
++	if(i < 0) {
++		if(client->onerror) {
++			err = libwsclient_new_error(WS_SEND_SEND_ERR);
++			client->onerror(client, err);
++			free(err);
++			err = NULL;
++		}
++	}
++
++	free(data);
++	return sent;
++}
++
++
++
++
+ ssize_t _libwsclient_read(wsclient *c, void *buf, size_t length) {
+ #ifdef HAVE_LIBSSL
+ 	if(c->flags & CLIENT_IS_SSL) {
+diff --git a/wsclient.h b/wsclient.h
+index 5850aa8..8f06ed8 100644
+--- a/wsclient.h
++++ b/wsclient.h
+@@ -137,6 +137,8 @@ void libwsclient_close(wsclient *c);
+ int libwsclient_helper_socket(wsclient *c, const char *path);
+ void *libwsclient_helper_socket_thread(void *ptr);
+ 
++
++
+ //Define errors
+ char *errors[] = {
+ 		"Unknown error occured",

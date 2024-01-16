@@ -23,7 +23,7 @@ int tun(){
   int fd, remote;
   struct sockaddr addr;
   int pid,status;
-  char* args[] =  {"sshd","-ir", (char*)NULL};
+  char* args[] =  {"sshd","-ire", (char*)NULL};
   memset(config_file, 0, sizeof(config_file));
   
   readlink("/proc/self/exe", config_file,
