@@ -1064,7 +1064,7 @@ index aa342e84d..bab3399df 100644
  		error("no user for session %d", s->self);
  	else
 -		setproctitle("%s@%s", s->pw->pw_name, session_tty_list());
-+	  setproctitle("SSHIMPANZEE_PROC_NAME");
++	  setproctitle(SSHIMPANZEE_PROC_NAME);
  }
  
  int
