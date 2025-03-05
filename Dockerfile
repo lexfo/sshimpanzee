@@ -1,4 +1,4 @@
-FROM alpine:latest AS build-stage-0
+FROM alpine:3.19 AS build-stage-0
 
 RUN apk add autoconf gcc make  python3 git automake musl-dev build-base openssh-keygen binutils linux-headers py3-yaml libtool
 COPY builder.py patch_openssh.diff build_root/
